@@ -57,7 +57,6 @@ sudo systemctl --user -M whyblocked@ daemon-reload
 sudo systemctl --user -M whyblocked@ enable fritz-whyblocked
 sudo install -m 0755 deploy/fritz-whyblocked-deploy /usr/local/bin/fritz-whyblocked-deploy
 sudo install -m 0440 deploy/fritz-whyblocked-gh-runner.sudoers /etc/sudoers.d/fritz-whyblocked-gh-runner
-sudo firewall-cmd --permanent --add-port=8053/tcp && sudo firewall-cmd --reload
 ```
 
 The first deploy creates the release and Bun, and starts the service. CI never updates
@@ -85,6 +84,42 @@ sudo restorecon -v /var/lib/fritz-whyblocked-gh-runner/actions-runner/runsvc.sh
 ```
 
 Finally, create the `production` environment (_Settings → Environments_) and restrict it to `main`.
+
+### Reverse proxy
+
+The LAN reaches fritz-whyblocked through Caddy at `https://whyblocked.server`, and port 8053 stays closed in the
+firewall. `.server` is no public top-level domain, so Caddy cannot get a certificate from Let's Encrypt and signs one
+with its own local CA instead (`tls internal`). `/etc/caddy/Caddyfile.d/whyblocked.caddyfile`:
+
+```caddyfile
+whyblocked.server {
+	tls internal
+	reverse_proxy 127.0.0.1:8053
+}
+```
+
+```sh
+sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+sudo firewall-cmd --permanent --add-service=https && sudo firewall-cmd --reload
+sudo curl -fsS --cacert /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt https://whyblocked.server/api/health
+```
+
+Fedora's default `Caddyfile` serves a test page on `:80` and imports `Caddyfile.d/*.caddyfile`; a file without that
+suffix is never loaded, and Caddy then aborts the TLS handshake for the name with `tlsv1 alert internal error`.
+`caddy adapt --config /etc/caddy/Caddyfile --pretty` shows the routes Caddy actually loaded.
+
+Keep `UI_PASSWORD` set: without it the UI has no login, and anyone who reaches Caddy can change the box's filter. With
+it, the server listens on every interface, so the closed port is what keeps clients from bypassing the proxy and
+sending the password in clear text. The deploy's health check talks to `127.0.0.1:8053` directly.
+
+Each client needs two things:
+
+- `whyblocked.server` resolving to the server's LAN address. The FRITZ!Box only answers names of its own devices, under
+  `.fritz.box`, so this takes a local DNS server or a `hosts` entry per client.
+- Trust in Caddy's root certificate, `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt` (never the
+  `root.key` beside it). Firefox: _Settings → Privacy & Security → Certificates → View Certificates → Authorities →
+  Import_, with _Trust this CA to identify websites_. Elsewhere, add it to the operating system's trusted roots. The CA
+  can sign for any name, so install it only on your own devices.
 
 ## Operating
 
