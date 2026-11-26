@@ -1,7 +1,7 @@
 /** History of the box statistics (statistics.dnsQueryCount) in SQLite. */
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { Database } from 'bun:sqlite';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 export interface StatsSample {
   ts: number;
@@ -17,25 +17,25 @@ export interface StatsInterval {
 }
 
 export class StatsStore {
-  private db: Database;
+  readonly #db: Database;
 
   constructor(dataDir: string) {
     mkdirSync(dataDir, { recursive: true });
-    this.db = new Database(join(dataDir, "whyblocked.sqlite"));
-    this.db.run("PRAGMA journal_mode = WAL");
-    this.db.run("CREATE TABLE IF NOT EXISTS stats (ts INTEGER PRIMARY KEY, total INTEGER NOT NULL, blocked INTEGER NOT NULL)");
+    this.#db = new Database(join(dataDir, 'whyblocked.sqlite'));
+    this.#db.run('PRAGMA journal_mode = WAL');
+    this.#db.run('CREATE TABLE IF NOT EXISTS stats (ts INTEGER PRIMARY KEY, total INTEGER NOT NULL, blocked INTEGER NOT NULL)');
   }
 
   add(sample: StatsSample): void {
-    this.db.query("INSERT OR REPLACE INTO stats (ts, total, blocked) VALUES (?, ?, ?)").run(sample.ts, sample.total, sample.blocked);
+    this.#db.query('INSERT OR REPLACE INTO stats (ts, total, blocked) VALUES (?, ?, ?)').run(sample.ts, sample.total, sample.blocked);
   }
 
   since(ts: number): StatsSample[] {
-    return this.db.query("SELECT ts, total, blocked FROM stats WHERE ts >= ? ORDER BY ts").all(ts) as StatsSample[];
+    return this.#db.query<StatsSample, [number]>('SELECT ts, total, blocked FROM stats WHERE ts >= ? ORDER BY ts').all(ts);
   }
 
   prune(olderThan: number): void {
-    this.db.query("DELETE FROM stats WHERE ts < ?").run(olderThan);
+    this.#db.query('DELETE FROM stats WHERE ts < ?').run(olderThan);
   }
 }
 
@@ -45,15 +45,19 @@ export class StatsStore {
  */
 export function toIntervals(samples: StatsSample[]): StatsInterval[] {
   const out: StatsInterval[] = [];
-  for (let i = 1; i < samples.length; i++) {
-    const prev = samples[i - 1]!;
-    const cur = samples[i]!;
+  let prev: StatsSample | undefined;
+  for (const cur of samples) {
+    if (prev === undefined) {
+      prev = cur;
+      continue;
+    }
     const reset = cur.total < prev.total || cur.blocked < prev.blocked;
     out.push({
       ts: cur.ts,
       total: reset ? cur.total : cur.total - prev.total,
       blocked: reset ? cur.blocked : cur.blocked - prev.blocked,
     });
+    prev = cur;
   }
   return out;
 }

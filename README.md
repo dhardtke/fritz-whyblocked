@@ -1,6 +1,6 @@
 # fritz-whyblocked
 
-*Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.*
+_Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click._
 
 Enter a domain or URL. fritz-whyblocked shows whether the FRITZ!Box DNS filter blocks it, which link of the CNAME chain triggers the block, and which filter list is responsible. You can add an exception with one click. It also has switches for exceptions, custom blocks and filter lists, and shows the box's statistics.
 
@@ -20,7 +20,7 @@ Changes to the box always follow the same steps. First a dry run shows the JSON 
 ## Requirements
 
 - FRITZ!Box with DNS filter and the beta API `/api/v0/beta/dnsfilter` (tested with 7590, FRITZ!OS 8.50)
-- [Bun](https://bun.sh) ≥ 1.1, no other runtime dependencies
+- [Bun](https://bun.sh), version in `.bun-version`; no other runtime dependencies
 
 > The API is `beta` and may change with FRITZ!OS updates.
 
@@ -28,44 +28,45 @@ Changes to the box always follow the same steps. First a dry run shows the JSON 
 
 ```sh
 cp .env.example .env   # set FRITZ_PASSWORD
-bun install            # types and TypeScript for development only
-bun start              # http://127.0.0.1:8053
-bun test
+bun install            # dev tooling only; there are no runtime dependencies
+bun start              # http://127.0.0.1:8053 (bun run start:dev restarts on changes)
 ```
 
-Without `UI_PASSWORD` the UI only listens on `127.0.0.1`. With it set, the UI is reachable from the LAN via basic auth. Write requests need the header `X-WhyBlocked: 1` (CSRF protection).
+Without `UI_PASSWORD` the UI only listens on `127.0.0.1`. With it set, the UI is reachable from the LAN via basic auth. Write requests need the header `X-WhyBlocked: 1` (CSRF protection). `GET /api/health` answers without auth.
+
+## Development
+
+```sh
+bun test --parallel    # tests sit beside the module they exercise (src/*.test.ts)
+bun run typecheck
+bun run lint           # oxlint, type-aware (.oxlintrc.json)
+bun run fmt            # bun fmt; fmt:check only checks
+bun run build          # dist/fritz-whyblocked.js, one file with the UI embedded
+```
+
+CI (`.github/workflows/ci.yml`) runs all of these on every pull request and push, and deploys pushes to `main`; see [docs/deployment.md](docs/deployment.md).
+
+How the code is organized, the conventions it follows (pinned dependencies, Renovate) and what a change touches are in [docs/architecture.md](docs/architecture.md), [docs/coding-guidelines.md](docs/coding-guidelines.md) and [docs/checklists.md](docs/checklists.md); [AGENTS.md](AGENTS.md) indexes them.
 
 ## Configuration
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `FRITZ_HOST` | `fritz.box` | Address of the box |
-| `FRITZ_USER` | empty | User; empty = most recently used user from `login_sid.lua` |
-| `FRITZ_PASSWORD` | – | Password (or systemd credential `fritz-password`) |
-| `BOX_DNS_V4` | resolved `FRITZ_HOST` | DNS address of the box for probing |
-| `BOX_DNS_V6` | empty | IPv6 address of the box (e.g. ULA); empty = no IPv6 probe |
-| `REFERENCE_DNS` | `1.1.1.1` | Resolver for the CNAME chain |
-| `PORT` | `8053` | Port of the UI |
-| `UI_PASSWORD` | empty | UI password (or credential `ui-password`) |
-| `DATA_DIR` | `./data` | List cache and statistics (under systemd: `StateDirectory`) |
-| `STATS_INTERVAL` | `300` | Statistics polling in seconds |
-| `LISTS_REFRESH_HOURS` | `24` | Filter list refresh in hours |
+| Variable              | Default               | Meaning                                                     |
+| --------------------- | --------------------- | ----------------------------------------------------------- |
+| `FRITZ_HOST`          | `fritz.box`           | Address of the box                                          |
+| `FRITZ_USER`          | empty                 | User; empty = most recently used user from `login_sid.lua`  |
+| `FRITZ_PASSWORD`      | –                     | Password (or systemd credential `fritz-password`)           |
+| `BOX_DNS_V4`          | resolved `FRITZ_HOST` | DNS address of the box for probing                          |
+| `BOX_DNS_V6`          | empty                 | IPv6 address of the box (e.g. ULA); empty = no IPv6 probe   |
+| `REFERENCE_DNS`       | `1.1.1.1`             | Resolver for the CNAME chain                                |
+| `PORT`                | `8053`                | Port of the UI                                              |
+| `UI_PASSWORD`         | empty                 | UI password (or credential `ui-password`)                   |
+| `DATA_DIR`            | `./data`              | List cache and statistics (under systemd: `StateDirectory`) |
+| `STATS_INTERVAL`      | `300`                 | Statistics polling in seconds                               |
+| `LISTS_REFRESH_HOURS` | `24`                  | Filter list refresh in hours                                |
 
-## Deployment (Fedora, systemd)
+## Deployment
 
-```sh
-# install Bun with install rather than mv so the SELinux context is right
-sudo install -m 0755 ~/.bun/bin/bun /usr/local/bin/bun
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin whyblocked
-sudo mkdir -p /opt/fritz-whyblocked /etc/fritz-whyblocked
-sudo cp -r src public package.json /opt/fritz-whyblocked/
-sudo cp .env.example /etc/fritz-whyblocked/config.env   # adjust, leave passwords empty
-sudo sh -c 'umask 077; printf %s "…" > /etc/fritz-whyblocked/fritz-password; printf %s "…" > /etc/fritz-whyblocked/ui-password'
-sudo cp deploy/fritz-whyblocked.service /etc/systemd/system/
-sudo firewall-cmd --permanent --add-port=8053/tcp && sudo firewall-cmd --reload
-sudo systemctl daemon-reload && sudo systemctl enable --now fritz-whyblocked
-journalctl -u fritz-whyblocked -f
-```
+Pushes to `main` deploy through a self-hosted GitHub Actions runner to a Fedora server, where the app runs as a hardened systemd service. [docs/deployment.md](docs/deployment.md) covers the pipeline, the server setup and operating it.
 
 ## Open points
 

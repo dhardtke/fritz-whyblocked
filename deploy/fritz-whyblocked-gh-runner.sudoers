@@ -1,0 +1,1 @@
+fritz-whyblocked-gh-runner ALL=(root) NOPASSWD: /usr/local/bin/fritz-whyblocked-deploy

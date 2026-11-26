@@ -1,390 +1,715 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>fritz-whyblocked</title>
-<style>
-  :root {
-    color-scheme: light;
-    --bg: #f6f6f4; --surface-1: #ffffff; --border: #e2e2de;
-    --text-primary: #191919; --text-secondary: #666666;
-    --series-1: #257de0; --grid: #ececea;
-    --good: #008a17; --critical: #d03a3b; --warn-bg: #fff6e0;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --bg: #111111; --surface-1: #191919; --border: #2e2e2e;
-      --text-primary: #efefef; --text-secondary: #9c9c9c;
-      --series-1: #338ced; --grid: #262626;
-      --good: #0aac23; --critical: #eb6263; --warn-bg: #2b2412;
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--text-primary); }
-  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
-  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 24px; }
-  h2 { font-size: 17px; margin: 0 0 12px; }
-  .sub { color: var(--text-secondary); margin: 2px 0 0; }
-  section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-top: 18px; }
-  input[type=text] { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: inherit; }
-  button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: inherit; cursor: pointer; }
-  button.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
-  button:disabled { opacity: .5; cursor: default; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .row input[type=text] { flex: 1; min-width: 220px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--text-secondary); font-weight: 500; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  code { font-size: 13px; overflow-wrap: anywhere; }
-  .muted { color: var(--text-secondary); }
-  .verdict { font-size: 17px; font-weight: 600; margin: 14px 0 6px; display: flex; gap: 8px; align-items: center; }
-  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
-  .blocked { color: var(--critical); }
-  .ok { color: var(--good); }
-  .notes { background: var(--warn-bg); border-radius: 6px; padding: 8px 12px 8px 28px; margin: 10px 0; }
-  .error { color: var(--critical); }
-  /* switch */
-  .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .switch span { position: absolute; inset: 0; border-radius: 22px; background: var(--border); transition: .15s; cursor: pointer; }
-  .switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .15s; }
-  .switch input:checked + span { background: var(--good); }
-  .switch input:checked + span::before { transform: translateX(18px); }
-  .switch input:focus-visible + span { outline: 2px solid var(--series-1); outline-offset: 2px; }
-  .filter-toggle { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-  /* statistics */
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .tile { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
-  .tile .label { color: var(--text-secondary); font-size: 13px; }
-  .tile .value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .chart-wrap { position: relative; }
-  .chart-wrap svg { display: block; width: 100%; height: 240px; }
-  .chart-wrap .axis { fill: var(--text-secondary); font-size: 11px; }
-  .tooltip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); white-space: nowrap; display: none; }
-  .ranges button[aria-pressed=true] { background: var(--text-primary); color: var(--surface-1); }
-  dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); color: inherit; max-width: 680px; width: 92vw; }
-  dialog pre { background: var(--bg); padding: 10px; border-radius: 6px; max-height: 320px; overflow: auto; font-size: 12px; }
-  details summary { cursor: pointer; color: var(--text-secondary); margin-top: 10px; }
-</style>
-</head>
-<body>
-<main>
-  <header>
-    <div>
-      <h1>fritz-whyblocked</h1>
-      <p class="sub">Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.</p>
-    </div>
-    <label class="filter-toggle" id="filterToggleWrap" hidden>
-      DNS filter
-      <span class="switch"><input type="checkbox" id="filterToggle" aria-label="Turn the box's DNS filter on or off"><span></span></span>
-      <span id="filterToggleText"></span>
-    </label>
-  </header>
-  <p id="boxError" class="error" hidden></p>
-
-  <section>
-    <h2>Why is this address blocked?</h2>
-    <form id="checkForm" class="row">
-      <input type="text" id="domain" placeholder="Domain or URL, e.g. www.example.com" autocomplete="off" required>
-      <button class="primary" type="submit" id="checkBtn">Check</button>
-    </form>
-    <div id="result"></div>
-  </section>
-
-  <section>
-    <h2>Box statistics</h2>
-    <div class="tiles" id="tiles"></div>
-    <div class="row ranges" role="group" aria-label="Time range">
-      <button data-hours="24" aria-pressed="true">24 h</button>
-      <button data-hours="168" aria-pressed="false">7 days</button>
-      <button data-hours="720" aria-pressed="false">30 days</button>
-    </div>
-    <p class="muted" style="margin:10px 0 4px">Share of blocked DNS queries per measurement interval, in %</p>
-    <div class="chart-wrap" id="chartWrap"><svg id="chart" role="img" aria-label="Share of blocked DNS queries over time"></svg><div class="tooltip" id="tooltip"></div></div>
-    <details><summary>Show as table</summary><div id="statsTable"></div></details>
-  </section>
-
-  <section>
-    <h2>Exceptions and custom blocks</h2>
-    <div id="domains"></div>
-    <form id="addForm" class="row" style="margin-top:12px">
-      <input type="text" id="newDomain" placeholder="Domain" autocomplete="off" required>
-      <select id="newAction" style="font:inherit;padding:7px;border-radius:6px"><option value="allow">Exception (allow)</option><option value="deny">Custom block</option></select>
-      <button type="submit">Add …</button>
-    </form>
-  </section>
-
-  <section>
-    <h2>Filter lists</h2>
-    <div id="lists"></div>
-    <div class="row" style="margin-top:10px"><button id="refreshLists">Reload lists</button><span class="muted" id="refreshInfo"></span></div>
-  </section>
-</main>
-
-<dialog id="confirm">
-  <h2 id="confirmTitle">Change on the box</h2>
-  <p class="muted">Dry run: this JSON is sent to the box via <code>PUT</code>. Afterwards the tool reads the state again and checks that the change arrived.</p>
-  <pre id="confirmBody"></pre>
-  <p id="confirmResult"></p>
-  <div class="row" style="justify-content:flex-end">
-    <button id="confirmCancel">Cancel</button>
-    <button class="primary" id="confirmSend">Send to the box</button>
-  </div>
-</dialog>
-
-<script>
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const fmt = new Intl.NumberFormat(undefined);
-const pct = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
-
-async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-WhyBlocked": "1" }, body: JSON.stringify(body) });
-  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data;
-}
-
-// ---------- changes: dry run first, then send ----------
-async function change(title, path, body, onDone) {
-  const dlg = $("confirm");
-  $("confirmTitle").textContent = title;
-  $("confirmResult").textContent = "";
-  $("confirmSend").disabled = false;
-  try {
-    const plan = await api(path, { ...body, dryRun: true });
-    $("confirmBody").textContent = `${plan.planned.method} ${plan.planned.url}\n\n${JSON.stringify(plan.planned.body, null, 2)}`;
-  } catch (err) {
-    $("confirmBody").textContent = "";
-    $("confirmResult").innerHTML = `<span class="error">${esc(err.message)}</span>`;
-    $("confirmSend").disabled = true;
-  }
-  dlg.showModal();
-  const result = await new Promise((resolve) => {
-    $("confirmCancel").onclick = () => resolve(null);
-    dlg.oncancel = () => resolve(null);
-    $("confirmSend").onclick = async () => {
-      $("confirmSend").disabled = true;
-      try {
-        const res = await api(path, { ...body, dryRun: false });
-        $("confirmResult").innerHTML = res.applied ? `<span class="ok">Applied by the box.</span>` : `<span class="error">${esc(res.warning)}</span>`;
-        setTimeout(() => resolve(res), res.applied ? 700 : 2500);
-      } catch (err) {
-        $("confirmResult").innerHTML = `<span class="error">${esc(err.message)}</span>`;
-        $("confirmSend").disabled = false;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fritz-whyblocked</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f6f4;
+        --surface-1: #ffffff;
+        --border: #e2e2de;
+        --text-primary: #191919;
+        --text-secondary: #666666;
+        --series-1: #257de0;
+        --grid: #ececea;
+        --good: #008a17;
+        --critical: #d03a3b;
+        --warn-bg: #fff6e0;
       }
-    };
-  });
-  dlg.close();
-  if (result) { await loadStatus(); onDone?.(); }
-  return result;
-}
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: #111111;
+          --surface-1: #191919;
+          --border: #2e2e2e;
+          --text-primary: #efefef;
+          --text-secondary: #9c9c9c;
+          --series-1: #338ced;
+          --grid: #262626;
+          --good: #0aac23;
+          --critical: #eb6263;
+          --warn-bg: #2b2412;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text-primary);
+      }
+      main {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      h2 {
+        font-size: 17px;
+        margin: 0 0 12px;
+      }
+      .sub {
+        color: var(--text-secondary);
+        margin: 2px 0 0;
+      }
+      section {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px;
+        margin-top: 18px;
+      }
+      input[type='text'] {
+        font: inherit;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: inherit;
+      }
+      button {
+        font: inherit;
+        padding: 7px 14px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface-1);
+        color: inherit;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--series-1);
+        border-color: var(--series-1);
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .row input[type='text'] {
+        flex: 1;
+        min-width: 220px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+      td.num,
+      th.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      code {
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .muted {
+        color: var(--text-secondary);
+      }
+      .verdict {
+        font-size: 17px;
+        font-weight: 600;
+        margin: 14px 0 6px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 1px 8px;
+        border-radius: 99px;
+        border: 1px solid currentColor;
+        white-space: nowrap;
+      }
+      .blocked {
+        color: var(--critical);
+      }
+      .ok {
+        color: var(--good);
+      }
+      .notes {
+        background: var(--warn-bg);
+        border-radius: 6px;
+        padding: 8px 12px 8px 28px;
+        margin: 10px 0;
+      }
+      .error {
+        color: var(--critical);
+      }
+      /* switch */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 22px;
+        flex: none;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .switch span {
+        position: absolute;
+        inset: 0;
+        border-radius: 22px;
+        background: var(--border);
+        transition: 0.15s;
+        cursor: pointer;
+      }
+      .switch span::before {
+        content: '';
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        left: 3px;
+        top: 3px;
+        border-radius: 50%;
+        background: #fff;
+        transition: 0.15s;
+      }
+      .switch input:checked + span {
+        background: var(--good);
+      }
+      .switch input:checked + span::before {
+        transform: translateX(18px);
+      }
+      .switch input:focus-visible + span {
+        outline: 2px solid var(--series-1);
+        outline-offset: 2px;
+      }
+      .filter-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+      }
+      /* statistics */
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .tile {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
+      .tile .label {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .tile .value {
+        font-size: 26px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .chart-wrap {
+        position: relative;
+      }
+      .chart-wrap svg {
+        display: block;
+        width: 100%;
+        height: 240px;
+      }
+      .chart-wrap .axis {
+        fill: var(--text-secondary);
+        font-size: 11px;
+      }
+      .tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 13px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        white-space: nowrap;
+        display: none;
+      }
+      .ranges button[aria-pressed='true'] {
+        background: var(--text-primary);
+        color: var(--surface-1);
+      }
+      dialog {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-1);
+        color: inherit;
+        max-width: 680px;
+        width: 92vw;
+      }
+      dialog pre {
+        background: var(--bg);
+        padding: 10px;
+        border-radius: 6px;
+        max-height: 320px;
+        overflow: auto;
+        font-size: 12px;
+      }
+      details summary {
+        cursor: pointer;
+        color: var(--text-secondary);
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>fritz-whyblocked</h1>
+          <p class="sub">Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.</p>
+        </div>
+        <label class="filter-toggle" id="filterToggleWrap" hidden>
+          DNS filter
+          <span class="switch"><input type="checkbox" id="filterToggle" aria-label="Turn the box's DNS filter on or off" /><span></span></span>
+          <span id="filterToggleText"></span>
+        </label>
+      </header>
+      <p id="boxError" class="error" hidden></p>
 
-// ---------- check ----------
-function probeCell(p) {
-  if (p.error) return `<span class="muted" title="${esc(p.error)}">no answer</span>`;
-  if (p.blocked) return `<span class="badge blocked">✕ blocked</span>`;
-  return p.addresses.length ? `<span class="ok">✓</span> <span class="muted">${esc(p.addresses[0])}</span>` : `<span class="muted">${esc(p.rcode)}, empty</span>`;
-}
+      <section>
+        <h2>Why is this address blocked?</h2>
+        <form id="checkForm" class="row">
+          <input type="text" id="domain" placeholder="Domain or URL, e.g. www.example.com" autocomplete="off" required />
+          <button class="primary" type="submit" id="checkBtn">Check</button>
+        </form>
+        <div id="result"></div>
+      </section>
 
-function hitText(h) {
-  const state = h.listEnabled ? "" : " (list off)";
-  const certainty = h.certain ? "" : ` <span class="badge" title="It is undocumented whether the box applies entries of this format to subdomains too.">interpretation unclear</span>`;
-  return `<b>${esc(h.listName)}</b>${state}: <code>${esc(h.line ?? h.ruleDomain)}</code> <span class="muted">${esc(h.kindLabel)}</span>${certainty}`;
-}
+      <section>
+        <h2>Box statistics</h2>
+        <div class="tiles" id="tiles"></div>
+        <div class="row ranges" role="group" aria-label="Time range">
+          <button data-hours="24" aria-pressed="true">24 h</button>
+          <button data-hours="168" aria-pressed="false">7 days</button>
+          <button data-hours="720" aria-pressed="false">30 days</button>
+        </div>
+        <p class="muted" style="margin: 10px 0 4px">Share of blocked DNS queries per measurement interval, in %</p>
+        <div class="chart-wrap" id="chartWrap">
+          <svg id="chart" role="img" aria-label="Share of blocked DNS queries over time"></svg>
+          <div class="tooltip" id="tooltip"></div>
+        </div>
+        <details>
+          <summary>Show as table</summary>
+          <div id="statsTable"></div>
+        </details>
+      </section>
 
-function renderResult(r) {
-  const blocked = r.blocked;
-  const servers = [...new Set(r.chain.flatMap((l) => l.probes.map((p) => p.server)))];
-  const resp = [...r.responsible.lists.map(hitText), ...r.responsible.custom.map((c) => `<b>Custom block</b>: <code>${esc(c.entry.domain)}</code>`)];
-  let html = `<div class="verdict ${blocked ? "blocked" : "ok"}">${blocked ? "✕ Blocked" : "✓ Not blocked"} <span class="muted" style="font-weight:400">${esc(r.domain)}</span></div>`;
-  if (blocked) {
-    html += `<p>Trigger: <code>${esc(r.trigger)}</code>${r.trigger !== r.domain ? " (CNAME target)" : ""}</p>`;
-    html += resp.length ? `<p>Responsible:</p><ul>${resp.map((x) => `<li>${x}</li>`).join("")}</ul>` : "";
-    html += `<div class="row"><button class="primary" id="allowBtn">Add exception for ${esc(r.suggestedAllow)} …</button></div>`;
-  }
-  if (r.notes.length) html += `<ul class="notes">${r.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
-  html += `<h3 style="font-size:15px;margin:16px 0 6px">CNAME chain</h3><table><thead><tr><th>Link</th>${servers.map((s) => `<th>${esc(s)}</th>`).join("")}<th>Rules</th></tr></thead><tbody>`;
-  for (const l of r.chain) {
-    const cells = servers.map((s) => `<td>${l.probes.filter((p) => p.server === s).map((p) => `${p.type}: ${probeCell(p)}`).join("<br>")}</td>`).join("");
-    const ruleCells = [...l.ruleHits.map(hitText), ...l.customHits.map((c) => `<b>${c.entry.action === "allow" ? "Exception" : "Custom block"}</b>${c.entry.enabled ? "" : " (off)"}: <code>${esc(c.entry.domain)}</code>${c.exact ? "" : ' <span class="muted">via parent domain</span>'}`)];
-    html += `<tr><td><code>${esc(l.name)}</code>${l.name === r.trigger ? ' <span class="badge blocked">trigger</span>' : ""}</td>${cells}<td>${ruleCells.join("<br>") || '<span class="muted">–</span>'}</td></tr>`;
-  }
-  html += "</tbody></table>";
-  $("result").innerHTML = html;
-  $("allowBtn")?.addEventListener("click", () =>
-    change(`Exception for ${r.suggestedAllow}`, "/api/domains", { domain: r.suggestedAllow, action: "allow", enabled: true }, () => check(r.input)));
-}
+      <section>
+        <h2>Exceptions and custom blocks</h2>
+        <div id="domains"></div>
+        <form id="addForm" class="row" style="margin-top: 12px">
+          <input type="text" id="newDomain" placeholder="Domain" autocomplete="off" required />
+          <select id="newAction" style="font: inherit; padding: 7px; border-radius: 6px">
+            <option value="allow">Exception (allow)</option>
+            <option value="deny">Custom block</option>
+          </select>
+          <button type="submit">Add …</button>
+        </form>
+      </section>
 
-async function check(input) {
-  $("checkBtn").disabled = true;
-  $("result").innerHTML = `<p class="muted">Checking ${esc(input)} …</p>`;
-  try { renderResult(await api(`/api/check?domain=${encodeURIComponent(input)}`)); }
-  catch (err) { $("result").innerHTML = `<p class="error">${esc(err.message)}</p>`; }
-  finally { $("checkBtn").disabled = false; }
-}
-$("checkForm").addEventListener("submit", (e) => { e.preventDefault(); check($("domain").value); });
+      <section>
+        <h2>Filter lists</h2>
+        <div id="lists"></div>
+        <div class="row" style="margin-top: 10px"><button id="refreshLists">Reload lists</button><span class="muted" id="refreshInfo"></span></div>
+      </section>
+    </main>
 
-// ---------- status, exceptions, lists ----------
-let status = null;
+    <dialog id="confirm">
+      <h2 id="confirmTitle">Change on the box</h2>
+      <p class="muted">
+        Dry run: this JSON is sent to the box via <code>PUT</code>. Afterwards the tool reads the state again and checks that the change arrived.
+      </p>
+      <pre id="confirmBody"></pre>
+      <p id="confirmResult"></p>
+      <div class="row" style="justify-content: flex-end">
+        <button id="confirmCancel">Cancel</button>
+        <button class="primary" id="confirmSend">Send to the box</button>
+      </div>
+    </dialog>
 
-function renderDomains(domains) {
-  if (!domains.length) { $("domains").innerHTML = `<p class="muted">No entries.</p>`; return; }
-  $("domains").innerHTML = `<table><thead><tr><th>On</th><th>Domain</th><th>Type</th><th>Comment</th></tr></thead><tbody>${domains.map((d, i) => `
-    <tr><td><label class="switch"><input type="checkbox" data-domain="${i}" ${d.enabled ? "checked" : ""} aria-label="Turn ${esc(d.domain)} on or off"><span></span></label></td>
-    <td><code>${esc(d.domain)}</code></td><td>${d.action === "allow" ? "Exception" : '<span class="blocked">Custom block</span>'}</td><td class="muted">${esc(d.comment)}</td></tr>`).join("")}</tbody></table>`;
-  $("domains").querySelectorAll("input[data-domain]").forEach((el) => el.addEventListener("change", async () => {
-    const d = domains[Number(el.dataset.domain)];
-    el.checked = d.enabled; // only change the state after confirmation
-    await change(`Turn ${d.domain} ${d.enabled ? "off" : "on"}`, "/api/domains", { domain: d.domain, action: d.action, enabled: !d.enabled });
-  }));
-}
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const fmt = new Intl.NumberFormat(undefined);
+      const pct = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 
-function renderLists(lists) {
-  if (!lists.length) { $("lists").innerHTML = `<p class="muted">No filter lists.</p>`; return; }
-  $("lists").innerHTML = `<table><thead><tr><th>On</th><th>List</th><th>Type</th><th class="num">Entries (box)</th><th class="num">Rules in index</th><th>Loaded</th></tr></thead><tbody>${lists.map((l, i) => `
-    <tr><td><label class="switch"><input type="checkbox" data-list="${i}" ${l.enabled ? "checked" : ""} aria-label="Turn ${esc(l.name)} on or off"><span></span></label></td>
-    <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td>${l.action === "allow" ? "Allow" : "Block"}</td>
-    <td class="num">${l.boxEntryCount != null ? fmt.format(l.boxEntryCount) : "–"}</td><td class="num">${fmt.format(l.indexedRules)}</td>
-    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`).join("")}</tbody></table>`;
-  $("lists").querySelectorAll("input[data-list]").forEach((el) => el.addEventListener("change", async () => {
-    const l = lists[Number(el.dataset.list)];
-    el.checked = l.enabled;
-    await change(`Turn list “${l.name}” ${l.enabled ? "off" : "on"}`, "/api/lists/toggle", { url: l.url, enabled: !l.enabled });
-  }));
-}
+      async function api(path, body) {
+        const res = await fetch(
+          path,
+          body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WhyBlocked': '1' }, body: JSON.stringify(body) },
+        );
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
+      }
 
-function renderTiles(s) {
-  if (!s || typeof s.total !== "number") { $("tiles").innerHTML = `<p class="muted">The box provides no statistics.</p>`; return; }
-  const share = s.total ? (s.blocked / s.total) * 100 : 0;
-  $("tiles").innerHTML = [["DNS queries total", fmt.format(s.total)], ["Blocked", fmt.format(s.blocked)], ["Share blocked", `${pct.format(share)} %`]]
-    .map(([label, value]) => `<div class="tile"><div class="label">${label}</div><div class="value">${value}</div></div>`).join("");
-}
+      // ---------- changes: dry run first, then send ----------
+      async function change(title, path, body, onDone) {
+        const dlg = $('confirm');
+        $('confirmTitle').textContent = title;
+        $('confirmResult').textContent = '';
+        $('confirmSend').disabled = false;
+        try {
+          const plan = await api(path, { ...body, dryRun: true });
+          $('confirmBody').textContent = `${plan.planned.method} ${plan.planned.url}\n\n${JSON.stringify(plan.planned.body, null, 2)}`;
+        } catch (err) {
+          $('confirmBody').textContent = '';
+          $('confirmResult').innerHTML = `<span class="error">${esc(err.message)}</span>`;
+          $('confirmSend').disabled = true;
+        }
+        dlg.showModal();
+        const result = await new Promise((resolve) => {
+          $('confirmCancel').onclick = () => resolve(null);
+          dlg.oncancel = () => resolve(null);
+          $('confirmSend').onclick = async () => {
+            $('confirmSend').disabled = true;
+            try {
+              const res = await api(path, { ...body, dryRun: false });
+              $('confirmResult').innerHTML = res.applied ? `<span class="ok">Applied by the box.</span>` : `<span class="error">${esc(res.warning)}</span>`;
+              setTimeout(() => resolve(res), res.applied ? 700 : 2500);
+            } catch (err) {
+              $('confirmResult').innerHTML = `<span class="error">${esc(err.message)}</span>`;
+              $('confirmSend').disabled = false;
+            }
+          };
+        });
+        dlg.close();
+        if (result) {
+          await loadStatus();
+          onDone?.();
+        }
+        return result;
+      }
 
-async function loadStatus() {
-  try {
-    status = await api("/api/status");
-    $("boxError").hidden = !status.boxError;
-    $("boxError").textContent = status.boxError ? `FRITZ!Box: ${status.boxError}` : "";
-    $("filterToggleWrap").hidden = status.filterEnabled === null;
-    $("filterToggle").checked = Boolean(status.filterEnabled);
-    $("filterToggleText").textContent = status.filterEnabled ? "an" : "aus";
-    renderTiles(status.statistics);
-    renderDomains(status.domains);
-    renderLists(status.lists);
-    if (!status.listsReady) setTimeout(loadStatus, 5000);
-  } catch (err) {
-    $("boxError").hidden = false;
-    $("boxError").textContent = err.message;
-  }
-}
+      // ---------- check ----------
+      function probeCell(p) {
+        if (p.error) return `<span class="muted" title="${esc(p.error)}">no answer</span>`;
+        if (p.blocked) return `<span class="badge blocked">✕ blocked</span>`;
+        return p.addresses.length
+          ? `<span class="ok">✓</span> <span class="muted">${esc(p.addresses[0])}</span>`
+          : `<span class="muted">${esc(p.rcode)}, empty</span>`;
+      }
 
-$("filterToggle").addEventListener("change", async () => {
-  const want = $("filterToggle").checked;
-  $("filterToggle").checked = !want;
-  await change(`Turn DNS filter ${want ? "on" : "off"}`, "/api/filter/toggle", { enabled: want });
-});
+      function hitText(h) {
+        const state = h.listEnabled ? '' : ' (list off)';
+        const certainty = h.certain
+          ? ''
+          : ` <span class="badge" title="It is undocumented whether the box applies entries of this format to subdomains too.">interpretation unclear</span>`;
+        return `<b>${esc(h.listName)}</b>${state}: <code>${esc(h.line ?? h.ruleDomain)}</code> <span class="muted">${esc(h.kindLabel)}</span>${certainty}`;
+      }
 
-$("addForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const domain = $("newDomain").value.trim();
-  const action = $("newAction").value;
-  const res = await change(`${action === "allow" ? "Exception" : "Custom block"} for ${domain}`, "/api/domains", { domain, action, enabled: true });
-  if (res) $("newDomain").value = "";
-});
+      function renderResult(r) {
+        const blocked = r.blocked;
+        const servers = [...new Set(r.chain.flatMap((l) => l.probes.map((p) => p.server)))];
+        const resp = [...r.responsible.lists.map(hitText), ...r.responsible.custom.map((c) => `<b>Custom block</b>: <code>${esc(c.entry.domain)}</code>`)];
+        let html = `<div class="verdict ${blocked ? 'blocked' : 'ok'}">${blocked ? '✕ Blocked' : '✓ Not blocked'} <span class="muted" style="font-weight:400">${esc(r.domain)}</span></div>`;
+        if (blocked) {
+          html += `<p>Trigger: <code>${esc(r.trigger)}</code>${r.trigger !== r.domain ? ' (CNAME target)' : ''}</p>`;
+          html += resp.length ? `<p>Responsible:</p><ul>${resp.map((x) => `<li>${x}</li>`).join('')}</ul>` : '';
+          html += `<div class="row"><button class="primary" id="allowBtn">Add exception for ${esc(r.suggestedAllow)} …</button></div>`;
+        }
+        if (r.notes.length) html += `<ul class="notes">${r.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
+        html += `<h3 style="font-size:15px;margin:16px 0 6px">CNAME chain</h3><table><thead><tr><th>Link</th>${servers.map((s) => `<th>${esc(s)}</th>`).join('')}<th>Rules</th></tr></thead><tbody>`;
+        for (const l of r.chain) {
+          const cells = servers
+            .map(
+              (s) =>
+                `<td>${l.probes
+                  .filter((p) => p.server === s)
+                  .map((p) => `${p.type}: ${probeCell(p)}`)
+                  .join('<br>')}</td>`,
+            )
+            .join('');
+          const ruleCells = [
+            ...l.ruleHits.map(hitText),
+            ...l.customHits.map(
+              (c) =>
+                `<b>${c.entry.action === 'allow' ? 'Exception' : 'Custom block'}</b>${c.entry.enabled ? '' : ' (off)'}: <code>${esc(c.entry.domain)}</code>${c.exact ? '' : ' <span class="muted">via parent domain</span>'}`,
+            ),
+          ];
+          html += `<tr><td><code>${esc(l.name)}</code>${l.name === r.trigger ? ' <span class="badge blocked">trigger</span>' : ''}</td>${cells}<td>${ruleCells.join('<br>') || '<span class="muted">–</span>'}</td></tr>`;
+        }
+        html += '</tbody></table>';
+        $('result').innerHTML = html;
+        $('allowBtn')?.addEventListener('click', () =>
+          change(`Exception for ${r.suggestedAllow}`, '/api/domains', { domain: r.suggestedAllow, action: 'allow', enabled: true }, () => check(r.input)),
+        );
+      }
 
-$("refreshLists").addEventListener("click", async () => {
-  $("refreshLists").disabled = true;
-  $("refreshInfo").textContent = "Loading lists …";
-  try { renderLists((await api("/api/lists/refresh", {})).lists); $("refreshInfo").textContent = ""; }
-  catch (err) { $("refreshInfo").textContent = err.message; }
-  finally { $("refreshLists").disabled = false; }
-});
+      async function check(input) {
+        $('checkBtn').disabled = true;
+        $('result').innerHTML = `<p class="muted">Checking ${esc(input)} …</p>`;
+        try {
+          renderResult(await api(`/api/check?domain=${encodeURIComponent(input)}`));
+        } catch (err) {
+          $('result').innerHTML = `<p class="error">${esc(err.message)}</p>`;
+        } finally {
+          $('checkBtn').disabled = false;
+        }
+      }
+      $('checkForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        check($('domain').value);
+      });
 
-// ---------- statistics history ----------
-let hours = 24;
-let points = [];
+      // ---------- status, exceptions, lists ----------
+      let status = null;
 
-function drawChart() {
-  const svg = $("chart");
-  const W = svg.clientWidth || 800, H = 240, m = { l: 40, r: 12, t: 10, b: 26 };
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  if (points.length < 2) {
-    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" class="axis">Not enough data points yet – the history fills up with every interval.</text>`;
-    return;
-  }
-  const t0 = points[0].ts, t1 = points[points.length - 1].ts;
-  const yMax = Math.max(5, Math.ceil(Math.max(...points.map((p) => p.share)) / 5) * 5);
-  const x = (t) => m.l + ((t - t0) / (t1 - t0 || 1)) * (W - m.l - m.r);
-  const y = (v) => m.t + (1 - v / yMax) * (H - m.t - m.b);
-  let g = "";
-  for (let i = 0; i <= 4; i++) {
-    const v = (yMax / 4) * i;
-    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end" class="axis">${pct.format(v)}</text>`;
-  }
-  const ticks = 5;
-  for (let i = 0; i <= ticks; i++) {
-    const t = t0 + ((t1 - t0) / ticks) * i;
-    const d = new Date(t);
-    const label = hours <= 24 ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
-    g += `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === ticks ? "end" : "middle"}" class="axis">${label}</text>`;
-  }
-  const path = points.map((p, i) => `${i ? "L" : "M"}${x(p.ts).toFixed(1)},${y(p.share).toFixed(1)}`).join("");
-  g += `<path d="${path}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-  g += `<line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-secondary)" stroke-dasharray="3 3" visibility="hidden"/>`;
-  g += `<circle id="dot" r="4.5" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2" visibility="hidden"/>`;
-  g += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" id="hit"/>`;
-  svg.innerHTML = g;
+      function renderDomains(domains) {
+        if (!domains.length) {
+          $('domains').innerHTML = `<p class="muted">No entries.</p>`;
+          return;
+        }
+        $('domains').innerHTML = `<table><thead><tr><th>On</th><th>Domain</th><th>Type</th><th>Comment</th></tr></thead><tbody>${domains
+          .map(
+            (d, i) => `
+    <tr><td><label class="switch"><input type="checkbox" data-domain="${i}" ${d.enabled ? 'checked' : ''} aria-label="Turn ${esc(d.domain)} on or off"><span></span></label></td>
+    <td><code>${esc(d.domain)}</code></td><td>${d.action === 'allow' ? 'Exception' : '<span class="blocked">Custom block</span>'}</td><td class="muted">${esc(d.comment)}</td></tr>`,
+          )
+          .join('')}</tbody></table>`;
+        $('domains')
+          .querySelectorAll('input[data-domain]')
+          .forEach((el) =>
+            el.addEventListener('change', async () => {
+              const d = domains[Number(el.dataset.domain)];
+              el.checked = d.enabled; // only change the state after confirmation
+              await change(`Turn ${d.domain} ${d.enabled ? 'off' : 'on'}`, '/api/domains', { domain: d.domain, action: d.action, enabled: !d.enabled });
+            }),
+          );
+      }
 
-  const tip = $("tooltip");
-  const hit = $("hit");
-  hit.addEventListener("pointermove", (e) => {
-    const box = svg.getBoundingClientRect();
-    const px = ((e.clientX - box.left) / box.width) * W;
-    let best = points[0];
-    for (const p of points) if (Math.abs(x(p.ts) - px) < Math.abs(x(best.ts) - px)) best = p;
-    const cx = x(best.ts), cy = y(best.share);
-    $("cross").setAttribute("x1", cx); $("cross").setAttribute("x2", cx); $("cross").setAttribute("visibility", "visible");
-    $("dot").setAttribute("cx", cx); $("dot").setAttribute("cy", cy); $("dot").setAttribute("visibility", "visible");
-    tip.innerHTML = `<div class="muted">${new Date(best.ts).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}</div><b>${pct.format(best.share)} %</b> blocked<br>${fmt.format(best.blocked)} of ${fmt.format(best.total)} queries`;
-    tip.style.display = "block";
-    const left = (cx / W) * box.width;
-    tip.style.left = `${Math.min(left + 12, box.width - tip.offsetWidth - 4)}px`;
-    tip.style.top = `${Math.max(0, (cy / H) * box.height - tip.offsetHeight - 10)}px`;
-  });
-  hit.addEventListener("pointerleave", () => {
-    tip.style.display = "none";
-    $("cross").setAttribute("visibility", "hidden");
-    $("dot").setAttribute("visibility", "hidden");
-  });
-}
+      function renderLists(lists) {
+        if (!lists.length) {
+          $('lists').innerHTML = `<p class="muted">No filter lists.</p>`;
+          return;
+        }
+        $('lists').innerHTML =
+          `<table><thead><tr><th>On</th><th>List</th><th>Type</th><th class="num">Entries (box)</th><th class="num">Rules in index</th><th>Loaded</th></tr></thead><tbody>${lists
+            .map(
+              (l, i) => `
+    <tr><td><label class="switch"><input type="checkbox" data-list="${i}" ${l.enabled ? 'checked' : ''} aria-label="Turn ${esc(l.name)} on or off"><span></span></label></td>
+    <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td>${l.action === 'allow' ? 'Allow' : 'Block'}</td>
+    <td class="num">${l.boxEntryCount != null ? fmt.format(l.boxEntryCount) : '–'}</td><td class="num">${fmt.format(l.indexedRules)}</td>
+    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`,
+            )
+            .join('')}</tbody></table>`;
+        $('lists')
+          .querySelectorAll('input[data-list]')
+          .forEach((el) =>
+            el.addEventListener('change', async () => {
+              const l = lists[Number(el.dataset.list)];
+              el.checked = l.enabled;
+              await change(`Turn list “${l.name}” ${l.enabled ? 'off' : 'on'}`, '/api/lists/toggle', { url: l.url, enabled: !l.enabled });
+            }),
+          );
+      }
 
-async function loadStats() {
-  try {
-    const data = await api(`/api/stats?hours=${hours}`);
-    points = data.intervals.map((p) => ({ ...p, share: p.total ? (p.blocked / p.total) * 100 : 0 }));
-  } catch { points = []; }
-  drawChart();
-  $("statsTable").innerHTML = points.length
-    ? `<table><thead><tr><th>End of interval</th><th class="num">Queries</th><th class="num">Blocked</th><th class="num">Share (%)</th></tr></thead><tbody>${points.slice().reverse().map((p) =>
-        `<tr><td>${new Date(p.ts).toLocaleString(undefined)}</td><td class="num">${fmt.format(p.total)}</td><td class="num">${fmt.format(p.blocked)}</td><td class="num">${pct.format(p.share)}</td></tr>`).join("")}</tbody></table>`
-    : `<p class="muted">No data.</p>`;
-}
+      function renderTiles(s) {
+        if (!s || typeof s.total !== 'number') {
+          $('tiles').innerHTML = `<p class="muted">The box provides no statistics.</p>`;
+          return;
+        }
+        const share = s.total ? (s.blocked / s.total) * 100 : 0;
+        $('tiles').innerHTML = [
+          ['DNS queries total', fmt.format(s.total)],
+          ['Blocked', fmt.format(s.blocked)],
+          ['Share blocked', `${pct.format(share)} %`],
+        ]
+          .map(([label, value]) => `<div class="tile"><div class="label">${label}</div><div class="value">${value}</div></div>`)
+          .join('');
+      }
 
-document.querySelectorAll(".ranges button").forEach((b) => b.addEventListener("click", () => {
-  hours = Number(b.dataset.hours);
-  document.querySelectorAll(".ranges button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
-  loadStats();
-}));
-window.addEventListener("resize", drawChart);
+      async function loadStatus() {
+        try {
+          status = await api('/api/status');
+          $('boxError').hidden = !status.boxError;
+          $('boxError').textContent = status.boxError ? `FRITZ!Box: ${status.boxError}` : '';
+          $('filterToggleWrap').hidden = status.filterEnabled === null;
+          $('filterToggle').checked = Boolean(status.filterEnabled);
+          $('filterToggleText').textContent = status.filterEnabled ? 'an' : 'aus';
+          renderTiles(status.statistics);
+          renderDomains(status.domains);
+          renderLists(status.lists);
+          if (!status.listsReady) setTimeout(loadStatus, 5000);
+        } catch (err) {
+          $('boxError').hidden = false;
+          $('boxError').textContent = err.message;
+        }
+      }
 
-loadStatus();
-loadStats();
-setInterval(() => { loadStatus(); loadStats(); }, 60_000);
-</script>
-</body>
+      $('filterToggle').addEventListener('change', async () => {
+        const want = $('filterToggle').checked;
+        $('filterToggle').checked = !want;
+        await change(`Turn DNS filter ${want ? 'on' : 'off'}`, '/api/filter/toggle', { enabled: want });
+      });
+
+      $('addForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const domain = $('newDomain').value.trim();
+        const action = $('newAction').value;
+        const res = await change(`${action === 'allow' ? 'Exception' : 'Custom block'} for ${domain}`, '/api/domains', { domain, action, enabled: true });
+        if (res) $('newDomain').value = '';
+      });
+
+      $('refreshLists').addEventListener('click', async () => {
+        $('refreshLists').disabled = true;
+        $('refreshInfo').textContent = 'Loading lists …';
+        try {
+          renderLists((await api('/api/lists/refresh', {})).lists);
+          $('refreshInfo').textContent = '';
+        } catch (err) {
+          $('refreshInfo').textContent = err.message;
+        } finally {
+          $('refreshLists').disabled = false;
+        }
+      });
+
+      // ---------- statistics history ----------
+      let hours = 24;
+      let points = [];
+
+      function drawChart() {
+        const svg = $('chart');
+        const W = svg.clientWidth || 800,
+          H = 240,
+          m = { l: 40, r: 12, t: 10, b: 26 };
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        if (points.length < 2) {
+          svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" class="axis">Not enough data points yet – the history fills up with every interval.</text>`;
+          return;
+        }
+        const t0 = points[0].ts,
+          t1 = points[points.length - 1].ts;
+        const yMax = Math.max(5, Math.ceil(Math.max(...points.map((p) => p.share)) / 5) * 5);
+        const x = (t) => m.l + ((t - t0) / (t1 - t0 || 1)) * (W - m.l - m.r);
+        const y = (v) => m.t + (1 - v / yMax) * (H - m.t - m.b);
+        let g = '';
+        for (let i = 0; i <= 4; i++) {
+          const v = (yMax / 4) * i;
+          g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end" class="axis">${pct.format(v)}</text>`;
+        }
+        const ticks = 5;
+        for (let i = 0; i <= ticks; i++) {
+          const t = t0 + ((t1 - t0) / ticks) * i;
+          const d = new Date(t);
+          const label =
+            hours <= 24
+              ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+              : d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' });
+          g += `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === ticks ? 'end' : 'middle'}" class="axis">${label}</text>`;
+        }
+        const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.ts).toFixed(1)},${y(p.share).toFixed(1)}`).join('');
+        g += `<path d="${path}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+        g += `<line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-secondary)" stroke-dasharray="3 3" visibility="hidden"/>`;
+        g += `<circle id="dot" r="4.5" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2" visibility="hidden"/>`;
+        g += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" id="hit"/>`;
+        svg.innerHTML = g;
+
+        const tip = $('tooltip');
+        const hit = $('hit');
+        hit.addEventListener('pointermove', (e) => {
+          const box = svg.getBoundingClientRect();
+          const px = ((e.clientX - box.left) / box.width) * W;
+          let best = points[0];
+          for (const p of points) if (Math.abs(x(p.ts) - px) < Math.abs(x(best.ts) - px)) best = p;
+          const cx = x(best.ts),
+            cy = y(best.share);
+          $('cross').setAttribute('x1', cx);
+          $('cross').setAttribute('x2', cx);
+          $('cross').setAttribute('visibility', 'visible');
+          $('dot').setAttribute('cx', cx);
+          $('dot').setAttribute('cy', cy);
+          $('dot').setAttribute('visibility', 'visible');
+          tip.innerHTML = `<div class="muted">${new Date(best.ts).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</div><b>${pct.format(best.share)} %</b> blocked<br>${fmt.format(best.blocked)} of ${fmt.format(best.total)} queries`;
+          tip.style.display = 'block';
+          const left = (cx / W) * box.width;
+          tip.style.left = `${Math.min(left + 12, box.width - tip.offsetWidth - 4)}px`;
+          tip.style.top = `${Math.max(0, (cy / H) * box.height - tip.offsetHeight - 10)}px`;
+        });
+        hit.addEventListener('pointerleave', () => {
+          tip.style.display = 'none';
+          $('cross').setAttribute('visibility', 'hidden');
+          $('dot').setAttribute('visibility', 'hidden');
+        });
+      }
+
+      async function loadStats() {
+        try {
+          const data = await api(`/api/stats?hours=${hours}`);
+          points = data.intervals.map((p) => ({ ...p, share: p.total ? (p.blocked / p.total) * 100 : 0 }));
+        } catch {
+          points = [];
+        }
+        drawChart();
+        $('statsTable').innerHTML = points.length
+          ? `<table><thead><tr><th>End of interval</th><th class="num">Queries</th><th class="num">Blocked</th><th class="num">Share (%)</th></tr></thead><tbody>${points
+              .slice()
+              .reverse()
+              .map(
+                (p) =>
+                  `<tr><td>${new Date(p.ts).toLocaleString(undefined)}</td><td class="num">${fmt.format(p.total)}</td><td class="num">${fmt.format(p.blocked)}</td><td class="num">${pct.format(p.share)}</td></tr>`,
+              )
+              .join('')}</tbody></table>`
+          : `<p class="muted">No data.</p>`;
+      }
+
+      document.querySelectorAll('.ranges button').forEach((b) =>
+        b.addEventListener('click', () => {
+          hours = Number(b.dataset.hours);
+          document.querySelectorAll('.ranges button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+          loadStats();
+        }),
+      );
+      window.addEventListener('resize', drawChart);
+
+      loadStatus();
+      loadStats();
+      setInterval(() => {
+        loadStatus();
+        loadStats();
+      }, 60_000);
+    </script>
+  </body>
 </html>

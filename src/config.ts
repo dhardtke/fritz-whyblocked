@@ -1,21 +1,27 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /** Reads a secret from systemd credentials (LoadCredential) or from the environment. */
 function secret(envName: string, credentialName: string): string {
   const dir = process.env.CREDENTIALS_DIRECTORY;
   if (dir) {
     const file = join(dir, credentialName);
-    if (existsSync(file)) return readFileSync(file, "utf8").trim();
+    if (existsSync(file)) {
+      return readFileSync(file, 'utf8').trim();
+    }
   }
-  return (process.env[envName] ?? "").trim();
+  return (process.env[envName] ?? '').trim();
 }
 
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
-  if (!raw) return fallback;
+  if (!raw) {
+    return fallback;
+  }
   const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number, got "${raw}"`);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number, got "${raw}"`);
+  }
   return value;
 }
 
@@ -33,18 +39,24 @@ export interface Config {
   listsRefreshMs: number;
 }
 
+/** An environment variable, with an empty value treated as unset. */
+function env(name: string): string | undefined {
+  const value = process.env[name];
+  return value === undefined || value === '' ? undefined : value;
+}
+
 export function loadConfig(): Config {
   return {
-    fritzHost: process.env.FRITZ_HOST || "fritz.box",
-    fritzUser: process.env.FRITZ_USER ?? "",
-    fritzPassword: secret("FRITZ_PASSWORD", "fritz-password"),
-    boxDnsV4: process.env.BOX_DNS_V4 ?? "",
-    boxDnsV6: process.env.BOX_DNS_V6 ?? "",
-    referenceDns: process.env.REFERENCE_DNS || "1.1.1.1",
-    port: num("PORT", 8053),
-    uiPassword: secret("UI_PASSWORD", "ui-password"),
-    dataDir: process.env.STATE_DIRECTORY || process.env.DATA_DIR || "./data",
-    statsIntervalMs: num("STATS_INTERVAL", 300) * 1000,
-    listsRefreshMs: num("LISTS_REFRESH_HOURS", 24) * 3600 * 1000,
+    fritzHost: env('FRITZ_HOST') ?? 'fritz.box',
+    fritzUser: process.env.FRITZ_USER ?? '',
+    fritzPassword: secret('FRITZ_PASSWORD', 'fritz-password'),
+    boxDnsV4: process.env.BOX_DNS_V4 ?? '',
+    boxDnsV6: process.env.BOX_DNS_V6 ?? '',
+    referenceDns: env('REFERENCE_DNS') ?? '1.1.1.1',
+    port: num('PORT', 8053),
+    uiPassword: secret('UI_PASSWORD', 'ui-password'),
+    dataDir: env('STATE_DIRECTORY') ?? env('DATA_DIR') ?? './data',
+    statsIntervalMs: num('STATS_INTERVAL', 300) * 1000,
+    listsRefreshMs: num('LISTS_REFRESH_HOURS', 24) * 3600 * 1000,
   };
 }

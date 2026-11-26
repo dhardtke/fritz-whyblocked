@@ -1,17 +1,28 @@
 {
   "name": "fritz-whyblocked",
   "version": "0.1.0",
-  "description": "Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.",
   "private": true,
+  "description": "Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.",
   "type": "module",
+  "module": "src/server.ts",
   "scripts": {
+    "build": "bun run src/scripts/build.ts",
+    "fmt": "bun fmt --no-script",
+    "fmt:check": "bun fmt --no-script --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "start": "bun run src/server.ts",
-    "dev": "bun --watch run src/server.ts",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "start:dev": "bun --watch run src/server.ts",
+    "test": "bun test --parallel",
+    "typecheck": "bun check"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5"
+    "@types/bun": "1.4.5",
+    "oxlint": "1.95.0",
+    "oxlint-tsgolint": "7.0.2009",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "bun": "1.4.5"
   }
 }

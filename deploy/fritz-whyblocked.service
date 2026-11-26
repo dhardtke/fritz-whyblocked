@@ -11,7 +11,8 @@ WorkingDirectory=/opt/fritz-whyblocked
 EnvironmentFile=/etc/fritz-whyblocked/config.env
 LoadCredential=fritz-password:/etc/fritz-whyblocked/fritz-password
 LoadCredential=ui-password:/etc/fritz-whyblocked/ui-password
-ExecStart=/usr/local/bin/bun run src/server.ts
+# current/ is the release fritz-whyblocked-deploy switched to; each release brings the Bun that built it.
+ExecStart=/opt/fritz-whyblocked/current/bun run /opt/fritz-whyblocked/current/fritz-whyblocked.js
 Restart=always
 RestartSec=5
 

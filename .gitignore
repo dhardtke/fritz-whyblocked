@@ -1,5 +1,19 @@
+# dependencies
 node_modules/
+
+# build output
+dist/
+
+# local data (list cache, statistics) and secrets
 data/
 .env
 *.sqlite
 *.sqlite-*
+
+# editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
