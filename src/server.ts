@@ -14,7 +14,7 @@ const rules = new RuleSet(config.dataDir);
 const stats = new StatsStore(config.dataDir);
 const CSRF_HEADER = "x-whyblocked";
 
-// ---------- Zustand der Box (kurz zwischengespeichert) ----------
+// ---------- box state (cached briefly) ----------
 
 let cached: { at: number; filter: DnsFilter } | null = null;
 let lastBoxError: string | null = null;
@@ -37,9 +37,9 @@ async function refreshLists(): Promise<void> {
   try {
     const filter = await getFilter(0);
     await rules.refresh(filter.filterlists ?? []);
-    console.log(`Filterlisten geladen: ${rules.status().map((l) => `${l.name} (${l.indexedRules})`).join(", ")}`);
+    console.log(`Filter lists loaded: ${rules.status().map((l) => `${l.name} (${l.indexedRules})`).join(", ")}`);
   } catch (err) {
-    console.error(`Filterlisten konnten nicht geladen werden: ${(err as Error).message}`);
+    console.error(`Could not load filter lists: ${(err as Error).message}`);
   }
 }
 
@@ -51,7 +51,7 @@ async function recordStats(): Promise<void> {
     }
     stats.prune(Date.now() - 30 * 24 * 3600 * 1000);
   } catch (err) {
-    console.error(`Statistik nicht abrufbar: ${(err as Error).message}`);
+    console.error(`Could not fetch statistics: ${(err as Error).message}`);
   }
 }
 
@@ -71,9 +71,9 @@ async function boxDnsServers(): Promise<{ label: string; address: string }[]> {
 }
 const boxServersPromise = boxDnsServers();
 
-// ---------- Schreiben mit Probelauf und Kontrolle ----------
+// ---------- writing with dry run and verification ----------
 
-/** Die Box liefert Statusfelder mit, die beim Schreiben nicht zurückgehen sollen. */
+/** The box returns status fields that should not be sent back when writing. */
 function writableLists(lists: FilterList[]): FilterList[] {
   return lists.map(({ status: _status, ...rest }) => rest as FilterList);
 }
@@ -84,7 +84,7 @@ async function writeOrPlan(body: Partial<DnsFilter>, dryRun: boolean, verify: (a
   await box.put(body);
   const after = await getFilter(0);
   const applied = verify(after);
-  return { dryRun: false, planned, applied, ...(applied ? {} : { warning: "Die Box hat die Änderung nicht wie erwartet übernommen." }) };
+  return { dryRun: false, planned, applied, ...(applied ? {} : { warning: "The box did not apply the change as expected." }) };
 }
 
 // ---------- HTTP ----------
@@ -108,7 +108,7 @@ async function readBody<T>(req: Request): Promise<T> {
   try {
     return (await req.json()) as T;
   } catch {
-    throw new HttpError(400, "Ungültiges JSON.");
+    throw new HttpError(400, "Invalid JSON.");
   }
 }
 
@@ -125,9 +125,9 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === "GET" && (path === "/" || path === "/index.html")) {
     return new Response(Bun.file(join(import.meta.dir, "..", "public", "index.html")));
   }
-  if (!path.startsWith("/api/")) return new Response("Nicht gefunden", { status: 404 });
+  if (!path.startsWith("/api/")) return new Response("Not found", { status: 404 });
   if (req.method !== "GET" && req.headers.get(CSRF_HEADER) !== "1") {
-    throw new HttpError(403, `Header ${CSRF_HEADER}: 1 fehlt.`);
+    throw new HttpError(403, `Header ${CSRF_HEADER}: 1 is missing.`);
   }
 
   if (req.method === "GET" && path === "/api/status") {
@@ -135,7 +135,7 @@ async function handle(req: Request): Promise<Response> {
     try {
       filter = await getFilter();
     } catch {
-      /* Fehler steht in lastBoxError */
+      /* the error is in lastBoxError */
     }
     return json({
       boxError: lastBoxError,
@@ -158,7 +158,7 @@ async function handle(req: Request): Promise<Response> {
         referenceDns: config.referenceDns,
         boxServers: await boxServersPromise,
       });
-      if (!rules.ready) result.notes.unshift("Die Filterlisten werden noch geladen; Treffer können fehlen.");
+      if (!rules.ready) result.notes.unshift("The filter lists are still loading; hits may be missing.");
       return json(result);
     } catch (err) {
       throw new HttpError(400, (err as Error).message);
@@ -172,7 +172,7 @@ async function handle(req: Request): Promise<Response> {
 
   if (req.method === "POST" && path === "/api/domains") {
     const body = await readBody<DomainChange & { dryRun?: boolean }>(req);
-    if (!body.domain || (body.action !== "allow" && body.action !== "deny")) throw new HttpError(400, "domain und action (allow|deny) nötig.");
+    if (!body.domain || (body.action !== "allow" && body.action !== "deny")) throw new HttpError(400, "domain and action (allow|deny) are required.");
     const change: DomainChange = { domain: body.domain.trim().toLowerCase(), action: body.action, enabled: body.enabled !== false, comment: body.comment };
     const filter = await getFilter(0);
     return json(await writeOrPlan({ domains: upsertDomain(filter.domains ?? [], change) }, body.dryRun !== false, (after) => domainApplied(after.domains, change)));
@@ -193,7 +193,7 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === "POST" && path === "/api/filter/toggle") {
     const body = await readBody<{ enabled: boolean; dryRun?: boolean }>(req);
     const filter = await getFilter(0);
-    if (typeof filter.enabled !== "boolean") throw new HttpError(409, "Die Box liefert keinen Schalter für den gesamten DNS-Filter.");
+    if (typeof filter.enabled !== "boolean") throw new HttpError(409, "The box does not provide a switch for the whole DNS filter.");
     return json(await writeOrPlan({ enabled: Boolean(body.enabled) }, body.dryRun !== false, (after) => after.enabled === Boolean(body.enabled)));
   }
 
@@ -202,7 +202,7 @@ async function handle(req: Request): Promise<Response> {
     return json({ lists: rules.status() });
   }
 
-  return json({ error: "Nicht gefunden" }, 404);
+  return json({ error: "Not found" }, 404);
 }
 
 const hostname = config.uiPassword ? "0.0.0.0" : "127.0.0.1";
@@ -211,7 +211,7 @@ const server = Bun.serve({
   port: config.port,
   async fetch(req) {
     if (!checkAuth(req)) {
-      return new Response("Anmeldung nötig", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="fritz-whyblocked", charset="UTF-8"' } });
+      return new Response("Authentication required", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="fritz-whyblocked", charset="UTF-8"' } });
     }
     try {
       return await handle(req);
@@ -222,7 +222,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(`fritz-whyblocked läuft auf http://${hostname}:${server.port}${config.uiPassword ? "" : " (nur lokal; UI_PASSWORD setzen für LAN-Zugriff)"}`);
+console.log(`fritz-whyblocked running at http://${hostname}:${server.port}${config.uiPassword ? "" : " (local only; set UI_PASSWORD for LAN access)"}`);
 
 void refreshLists();
 void recordStats();

@@ -1,4 +1,4 @@
-/** Verlauf der Box-Statistik (statistics.dnsQueryCount) in SQLite. */
+/** History of the box statistics (statistics.dnsQueryCount) in SQLite. */
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ export interface StatsSample {
 }
 
 export interface StatsInterval {
-  /** Ende des Intervalls (ms) */
+  /** End of the interval (ms) */
   ts: number;
   total: number;
   blocked: number;
@@ -40,8 +40,8 @@ export class StatsStore {
 }
 
 /**
- * Macht aus Zählerständen Anfragen pro Intervall. Die Box zählt fortlaufend;
- * fällt ein Zähler (Neustart, Tageswechsel), zählt der neue Stand als Intervallwert.
+ * Turns counter readings into queries per interval. The box counts continuously;
+ * if a counter drops (reboot, new day), the new reading counts as the interval value.
  */
 export function toIntervals(samples: StatsSample[]): StatsInterval[] {
   const out: StatsInterval[] = [];

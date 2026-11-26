@@ -1,5 +1,5 @@
 [Unit]
-Description=fritz-whyblocked – warum sperrt der DNS-Filter der FRITZ!Box?
+Description=fritz-whyblocked – why does the FRITZ!Box DNS filter block a domain?
 After=network-online.target
 Wants=network-online.target
 

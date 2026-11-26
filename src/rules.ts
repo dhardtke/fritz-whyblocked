@@ -1,31 +1,31 @@
 /**
- * Regel-Index für die Filterlisten der Box.
+ * Rule index for the box's filter lists.
  *
- * Jede Regel wird als 44-Bit-Hash der Domain plus 2 Bit Regelart in einem sortierten
- * Float64Array abgelegt (8 Byte pro Regel; Fehltreffer etwa 1 zu 8 Mio. bei 2 Mio. Regeln).
- * Ein Treffer wird zur Anzeige im zwischengespeicherten Listentext bestätigt.
+ * Each rule is stored as a 44-bit hash of the domain plus 2 bits of rule kind in a sorted
+ * Float64Array (8 bytes per rule; false positives about 1 in 8 million with 2 million rules).
+ * A hit is confirmed against the cached list text before it is shown.
  */
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { FilterList } from "./fritz.ts";
 
 export const KIND = {
-  /** gilt nur für genau diese Domain (Hosts-Zeile, |domain^, nackte Domain) */
+  /** applies to exactly this domain (hosts line, |domain^, bare domain) */
   EXACT: 0,
-  /** Domain und alle Subdomains (||domain^) */
+  /** domain and all subdomains (||domain^) */
   WITH_SUBDOMAINS: 1,
-  /** nur Subdomains (*.domain) */
+  /** subdomains only (*.domain) */
   SUBDOMAINS_ONLY: 2,
-  /** Ausnahme in der Liste selbst (@@||domain^) */
+  /** exception within the list itself (@@||domain^) */
   EXCEPTION: 3,
 } as const;
 export type Kind = (typeof KIND)[keyof typeof KIND];
 
 export const KIND_LABEL: Record<Kind, string> = {
-  0: "exakt",
-  1: "Domain und Subdomains",
-  2: "nur Subdomains",
-  3: "Ausnahme in der Liste",
+  0: "exact",
+  1: "domain and subdomains",
+  2: "subdomains only",
+  3: "exception in list",
 };
 
 export interface ParsedRule {
@@ -41,7 +41,7 @@ function valid(domain: string): boolean {
   return domain.length <= 253 && DOMAIN_RE.test(domain);
 }
 
-/** Zerlegt eine Zeile im Adblock-, Hosts- oder Wildcard-Format. Unbekanntes ergibt []. */
+/** Parses a line in Adblock, hosts or wildcard format. Anything unknown yields []. */
 export function parseLine(raw: string): ParsedRule[] {
   const line = raw.trim().toLowerCase();
   if (!line || line[0] === "!" || line[0] === "#" || line[0] === "[") return [];
@@ -61,7 +61,7 @@ export function parseLine(raw: string): ParsedRule[] {
     exception = true;
     rest = rest.slice(2);
   }
-  // Modifikatoren ($important, $client=…) ignorieren
+  // ignore modifiers ($important, $client=…)
   const dollar = rest.indexOf("$");
   if (dollar >= 0) rest = rest.slice(0, dollar);
 
@@ -118,7 +118,7 @@ export class RuleIndex {
       }
     }
     const sorted = values.slice(0, n).sort();
-    // Duplikate entfernen
+    // remove duplicates
     let w = 0;
     for (let i = 0; i < sorted.length; i++) if (i === 0 || sorted[i] !== sorted[w - 1]) sorted[w++] = sorted[i]!;
     return new RuleIndex(sorted.slice(0, w), w, skipped);
@@ -128,7 +128,7 @@ export class RuleIndex {
     return this.values.byteLength;
   }
 
-  /** Alle Regelarten, die für genau diese Domain eingetragen sind. */
+  /** All rule kinds listed for exactly this domain. */
   kindsFor(domain: string): Kind[] {
     const base = hashDomain(domain) * 4;
     let lo = 0, hi = this.values.length;
@@ -147,19 +147,19 @@ export interface RuleHit {
   listName: string;
   listUrl: string;
   listEnabled: boolean;
-  /** "allow" bei Freigabe-Listen, sonst "block" */
+  /** "allow" for allow lists, otherwise "block" */
   listAction: string;
-  /** Domain, unter der die Regel eingetragen ist (der Name selbst oder eine Eltern-Domain) */
+  /** Domain the rule is listed under (the name itself or a parent domain) */
   ruleDomain: string;
   kind: Kind;
   kindLabel: string;
-  /** false, wenn nicht dokumentiert ist, ob die Box die Regel so auslegt */
+  /** false if it is undocumented whether the box interprets the rule this way */
   certain: boolean;
-  /** Zeile aus der Liste, sofern im Cache gefunden */
+  /** Line from the list, if found in the cache */
   line?: string;
 }
 
-/** Alle Domains, unter denen eine Regel für `name` stehen könnte: name, Eltern bis zur TLD+1. */
+/** All domains a rule for `name` could be listed under: the name and its parents down to TLD+1. */
 export function candidates(name: string): string[] {
   const parts = name.split(".");
   const out: string[] = [];
@@ -167,12 +167,12 @@ export function candidates(name: string): string[] {
   return out;
 }
 
-/** Ordnet Regelarten für einen Namen ein: greift die Regel und ist die Auslegung sicher? */
+/** Classifies a rule kind for a name: does the rule apply, and is that interpretation certain? */
 export function classify(name: string, ruleDomain: string, kind: Kind): { applies: boolean; certain: boolean } {
   const self = name === ruleDomain;
   switch (kind) {
     case KIND.EXACT:
-      // Ob Hosts-/Domain-Einträge auch Subdomains sperren, ist bei der Box nicht dokumentiert.
+      // Whether hosts/domain entries also block subdomains is undocumented for the box.
       return self ? { applies: true, certain: true } : { applies: true, certain: false };
     case KIND.WITH_SUBDOMAINS:
     case KIND.EXCEPTION:
@@ -213,7 +213,7 @@ export class RuleSet {
     return join(this.dataDir, "lists", `${new Bun.CryptoHasher("sha1").update(url).digest("hex")}.txt`);
   }
 
-  /** Lädt alle Listen der Box herunter (bei Fehler aus dem Cache) und baut die Indizes neu. */
+  /** Downloads all of the box's lists (falling back to the cache on error) and rebuilds the indexes. */
   refresh(filterlists: FilterList[]): Promise<void> {
     this.refreshing ??= this.doRefresh(filterlists).finally(() => (this.refreshing = null));
     return this.refreshing;
@@ -230,20 +230,20 @@ export class RuleSet {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         await Bun.write(file, await res.text());
       } catch (err) {
-        error = `Download fehlgeschlagen (${(err as Error).message})`;
+        error = `download failed (${(err as Error).message})`;
       }
       const cached = Bun.file(file);
       if (await cached.exists()) {
         const index = RuleIndex.build(await cached.text());
-        next.push({ meta, index, file, loadedAt: error ? cached.lastModified : Date.now(), ...(error ? { error: `${error}, nutze Cache` } : {}) });
+        next.push({ meta, index, file, loadedAt: error ? cached.lastModified : Date.now(), ...(error ? { error: `${error}, using cache` } : {}) });
       } else {
-        next.push({ meta, index: null, file, error: error ?? "nicht geladen" });
+        next.push({ meta, index: null, file, error: error ?? "not loaded" });
       }
     }
     this.lists = next;
   }
 
-  /** Übernimmt Metadaten (enabled, Name) aus der Box, ohne neu herunterzuladen. */
+  /** Takes over metadata (enabled, name) from the box without downloading again. */
   updateMeta(filterlists: FilterList[]): void {
     for (const l of this.lists) {
       const fresh = filterlists.find((f) => f.url === l.meta.url);
@@ -270,7 +270,7 @@ export class RuleSet {
     }));
   }
 
-  /** Sucht alle Regeln, die für `name` greifen könnten, und bestätigt sie im Listentext. */
+  /** Finds all rules that could apply to `name` and confirms them in the list text. */
   async lookup(name: string): Promise<RuleHit[]> {
     const hits: RuleHit[] = [];
     for (const l of this.lists) {
@@ -280,7 +280,7 @@ export class RuleSet {
           const { applies, certain } = classify(name, ruleDomain, kind);
           if (!applies) continue;
           const line = await findLine(l.file, ruleDomain, kind);
-          if (line === null) continue; // Hash-Kollision
+          if (line === null) continue; // hash collision
           hits.push({
             listName: l.meta.name,
             listUrl: l.meta.url,
@@ -299,7 +299,7 @@ export class RuleSet {
   }
 }
 
-/** Sucht die Originalzeile einer Regel im Cache; null, wenn es sie nicht gibt (Hash-Kollision). */
+/** Finds a rule's original line in the cache; null if there is none (hash collision). */
 export async function findLine(file: string, domain: string, kind: Kind): Promise<string | null> {
   const f = Bun.file(file);
   if (!(await f.exists())) return null;

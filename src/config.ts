@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** Liest ein Geheimnis aus systemd-Credentials (LoadCredential) oder aus der Umgebung. */
+/** Reads a secret from systemd credentials (LoadCredential) or from the environment. */
 function secret(envName: string, credentialName: string): string {
   const dir = process.env.CREDENTIALS_DIRECTORY;
   if (dir) {
@@ -15,7 +15,7 @@ function num(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} muss eine positive Zahl sein, ist aber "${raw}"`);
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number, got "${raw}"`);
   return value;
 }
 

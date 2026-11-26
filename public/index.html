@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -47,7 +47,7 @@
   .ok { color: var(--good); }
   .notes { background: var(--warn-bg); border-radius: 6px; padding: 8px 12px 8px 28px; margin: 10px 0; }
   .error { color: var(--critical); }
-  /* Schalter */
+  /* switch */
   .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
   .switch input { opacity: 0; width: 0; height: 0; }
   .switch span { position: absolute; inset: 0; border-radius: 22px; background: var(--border); transition: .15s; cursor: pointer; }
@@ -56,7 +56,7 @@
   .switch input:checked + span::before { transform: translateX(18px); }
   .switch input:focus-visible + span { outline: 2px solid var(--series-1); outline-offset: 2px; }
   .filter-toggle { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-  /* Statistik */
+  /* statistics */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .tile { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
   .tile .label { color: var(--text-secondary); font-size: 13px; }
@@ -79,68 +79,68 @@
       <p class="sub">Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.</p>
     </div>
     <label class="filter-toggle" id="filterToggleWrap" hidden>
-      DNS-Filter
-      <span class="switch"><input type="checkbox" id="filterToggle" aria-label="DNS-Filter der Box an oder aus"><span></span></span>
+      DNS filter
+      <span class="switch"><input type="checkbox" id="filterToggle" aria-label="Turn the box's DNS filter on or off"><span></span></span>
       <span id="filterToggleText"></span>
     </label>
   </header>
   <p id="boxError" class="error" hidden></p>
 
   <section>
-    <h2>Warum ist diese Adresse gesperrt?</h2>
+    <h2>Why is this address blocked?</h2>
     <form id="checkForm" class="row">
-      <input type="text" id="domain" placeholder="Domain oder URL, z. B. www.example.com" autocomplete="off" required>
-      <button class="primary" type="submit" id="checkBtn">Prüfen</button>
+      <input type="text" id="domain" placeholder="Domain or URL, e.g. www.example.com" autocomplete="off" required>
+      <button class="primary" type="submit" id="checkBtn">Check</button>
     </form>
     <div id="result"></div>
   </section>
 
   <section>
-    <h2>Statistik der Box</h2>
+    <h2>Box statistics</h2>
     <div class="tiles" id="tiles"></div>
-    <div class="row ranges" role="group" aria-label="Zeitraum">
+    <div class="row ranges" role="group" aria-label="Time range">
       <button data-hours="24" aria-pressed="true">24 h</button>
-      <button data-hours="168" aria-pressed="false">7 Tage</button>
-      <button data-hours="720" aria-pressed="false">30 Tage</button>
+      <button data-hours="168" aria-pressed="false">7 days</button>
+      <button data-hours="720" aria-pressed="false">30 days</button>
     </div>
-    <p class="muted" style="margin:10px 0 4px">Anteil gesperrter DNS-Anfragen je Messintervall, in %</p>
-    <div class="chart-wrap" id="chartWrap"><svg id="chart" role="img" aria-label="Anteil gesperrter DNS-Anfragen im Zeitverlauf"></svg><div class="tooltip" id="tooltip"></div></div>
-    <details><summary>Als Tabelle</summary><div id="statsTable"></div></details>
+    <p class="muted" style="margin:10px 0 4px">Share of blocked DNS queries per measurement interval, in %</p>
+    <div class="chart-wrap" id="chartWrap"><svg id="chart" role="img" aria-label="Share of blocked DNS queries over time"></svg><div class="tooltip" id="tooltip"></div></div>
+    <details><summary>Show as table</summary><div id="statsTable"></div></details>
   </section>
 
   <section>
-    <h2>Ausnahmen und eigene Sperren</h2>
+    <h2>Exceptions and custom blocks</h2>
     <div id="domains"></div>
     <form id="addForm" class="row" style="margin-top:12px">
       <input type="text" id="newDomain" placeholder="Domain" autocomplete="off" required>
-      <select id="newAction" style="font:inherit;padding:7px;border-radius:6px"><option value="allow">Ausnahme (freigeben)</option><option value="deny">Eigene Sperre</option></select>
-      <button type="submit">Hinzufügen …</button>
+      <select id="newAction" style="font:inherit;padding:7px;border-radius:6px"><option value="allow">Exception (allow)</option><option value="deny">Custom block</option></select>
+      <button type="submit">Add …</button>
     </form>
   </section>
 
   <section>
-    <h2>Filterlisten</h2>
+    <h2>Filter lists</h2>
     <div id="lists"></div>
-    <div class="row" style="margin-top:10px"><button id="refreshLists">Listen neu laden</button><span class="muted" id="refreshInfo"></span></div>
+    <div class="row" style="margin-top:10px"><button id="refreshLists">Reload lists</button><span class="muted" id="refreshInfo"></span></div>
   </section>
 </main>
 
 <dialog id="confirm">
-  <h2 id="confirmTitle">Änderung an der Box</h2>
-  <p class="muted">Probelauf: Dieses JSON geht per <code>PUT</code> an die Box. Danach liest das Tool den Stand erneut und prüft, ob er angekommen ist.</p>
+  <h2 id="confirmTitle">Change on the box</h2>
+  <p class="muted">Dry run: this JSON is sent to the box via <code>PUT</code>. Afterwards the tool reads the state again and checks that the change arrived.</p>
   <pre id="confirmBody"></pre>
   <p id="confirmResult"></p>
   <div class="row" style="justify-content:flex-end">
-    <button id="confirmCancel">Abbrechen</button>
-    <button class="primary" id="confirmSend">An die Box senden</button>
+    <button id="confirmCancel">Cancel</button>
+    <button class="primary" id="confirmSend">Send to the box</button>
   </div>
 </dialog>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const fmt = new Intl.NumberFormat("de-DE");
-const pct = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+const fmt = new Intl.NumberFormat(undefined);
+const pct = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 
 async function api(path, body) {
   const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-WhyBlocked": "1" }, body: JSON.stringify(body) });
@@ -149,7 +149,7 @@ async function api(path, body) {
   return data;
 }
 
-// ---------- Änderungen: erst Probelauf, dann senden ----------
+// ---------- changes: dry run first, then send ----------
 async function change(title, path, body, onDone) {
   const dlg = $("confirm");
   $("confirmTitle").textContent = title;
@@ -171,7 +171,7 @@ async function change(title, path, body, onDone) {
       $("confirmSend").disabled = true;
       try {
         const res = await api(path, { ...body, dryRun: false });
-        $("confirmResult").innerHTML = res.applied ? `<span class="ok">Von der Box übernommen.</span>` : `<span class="error">${esc(res.warning)}</span>`;
+        $("confirmResult").innerHTML = res.applied ? `<span class="ok">Applied by the box.</span>` : `<span class="error">${esc(res.warning)}</span>`;
         setTimeout(() => resolve(res), res.applied ? 700 : 2500);
       } catch (err) {
         $("confirmResult").innerHTML = `<span class="error">${esc(err.message)}</span>`;
@@ -184,84 +184,84 @@ async function change(title, path, body, onDone) {
   return result;
 }
 
-// ---------- Prüfen ----------
+// ---------- check ----------
 function probeCell(p) {
-  if (p.error) return `<span class="muted" title="${esc(p.error)}">keine Antwort</span>`;
-  if (p.blocked) return `<span class="badge blocked">✕ gesperrt</span>`;
-  return p.addresses.length ? `<span class="ok">✓</span> <span class="muted">${esc(p.addresses[0])}</span>` : `<span class="muted">${esc(p.rcode)}, leer</span>`;
+  if (p.error) return `<span class="muted" title="${esc(p.error)}">no answer</span>`;
+  if (p.blocked) return `<span class="badge blocked">✕ blocked</span>`;
+  return p.addresses.length ? `<span class="ok">✓</span> <span class="muted">${esc(p.addresses[0])}</span>` : `<span class="muted">${esc(p.rcode)}, empty</span>`;
 }
 
 function hitText(h) {
-  const state = h.listEnabled ? "" : " (Liste aus)";
-  const certainty = h.certain ? "" : ` <span class="badge" title="Ob die Box Einträge dieses Formats auch für Subdomains anwendet, ist nicht dokumentiert.">Auslegung unklar</span>`;
+  const state = h.listEnabled ? "" : " (list off)";
+  const certainty = h.certain ? "" : ` <span class="badge" title="It is undocumented whether the box applies entries of this format to subdomains too.">interpretation unclear</span>`;
   return `<b>${esc(h.listName)}</b>${state}: <code>${esc(h.line ?? h.ruleDomain)}</code> <span class="muted">${esc(h.kindLabel)}</span>${certainty}`;
 }
 
 function renderResult(r) {
   const blocked = r.blocked;
   const servers = [...new Set(r.chain.flatMap((l) => l.probes.map((p) => p.server)))];
-  const resp = [...r.responsible.lists.map(hitText), ...r.responsible.custom.map((c) => `<b>Eigene Sperre</b>: <code>${esc(c.entry.domain)}</code>`)];
-  let html = `<div class="verdict ${blocked ? "blocked" : "ok"}">${blocked ? "✕ Gesperrt" : "✓ Nicht gesperrt"} <span class="muted" style="font-weight:400">${esc(r.domain)}</span></div>`;
+  const resp = [...r.responsible.lists.map(hitText), ...r.responsible.custom.map((c) => `<b>Custom block</b>: <code>${esc(c.entry.domain)}</code>`)];
+  let html = `<div class="verdict ${blocked ? "blocked" : "ok"}">${blocked ? "✕ Blocked" : "✓ Not blocked"} <span class="muted" style="font-weight:400">${esc(r.domain)}</span></div>`;
   if (blocked) {
-    html += `<p>Auslöser: <code>${esc(r.trigger)}</code>${r.trigger !== r.domain ? " (CNAME-Ziel)" : ""}</p>`;
-    html += resp.length ? `<p>Verantwortlich:</p><ul>${resp.map((x) => `<li>${x}</li>`).join("")}</ul>` : "";
-    html += `<div class="row"><button class="primary" id="allowBtn">Ausnahme für ${esc(r.suggestedAllow)} anlegen …</button></div>`;
+    html += `<p>Trigger: <code>${esc(r.trigger)}</code>${r.trigger !== r.domain ? " (CNAME target)" : ""}</p>`;
+    html += resp.length ? `<p>Responsible:</p><ul>${resp.map((x) => `<li>${x}</li>`).join("")}</ul>` : "";
+    html += `<div class="row"><button class="primary" id="allowBtn">Add exception for ${esc(r.suggestedAllow)} …</button></div>`;
   }
   if (r.notes.length) html += `<ul class="notes">${r.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
-  html += `<h3 style="font-size:15px;margin:16px 0 6px">CNAME-Kette</h3><table><thead><tr><th>Glied</th>${servers.map((s) => `<th>${esc(s)}</th>`).join("")}<th>Regeln</th></tr></thead><tbody>`;
+  html += `<h3 style="font-size:15px;margin:16px 0 6px">CNAME chain</h3><table><thead><tr><th>Link</th>${servers.map((s) => `<th>${esc(s)}</th>`).join("")}<th>Rules</th></tr></thead><tbody>`;
   for (const l of r.chain) {
     const cells = servers.map((s) => `<td>${l.probes.filter((p) => p.server === s).map((p) => `${p.type}: ${probeCell(p)}`).join("<br>")}</td>`).join("");
-    const ruleCells = [...l.ruleHits.map(hitText), ...l.customHits.map((c) => `<b>${c.entry.action === "allow" ? "Ausnahme" : "Eigene Sperre"}</b>${c.entry.enabled ? "" : " (aus)"}: <code>${esc(c.entry.domain)}</code>${c.exact ? "" : ' <span class="muted">über Eltern-Domain</span>'}`)];
-    html += `<tr><td><code>${esc(l.name)}</code>${l.name === r.trigger ? ' <span class="badge blocked">Auslöser</span>' : ""}</td>${cells}<td>${ruleCells.join("<br>") || '<span class="muted">–</span>'}</td></tr>`;
+    const ruleCells = [...l.ruleHits.map(hitText), ...l.customHits.map((c) => `<b>${c.entry.action === "allow" ? "Exception" : "Custom block"}</b>${c.entry.enabled ? "" : " (off)"}: <code>${esc(c.entry.domain)}</code>${c.exact ? "" : ' <span class="muted">via parent domain</span>'}`)];
+    html += `<tr><td><code>${esc(l.name)}</code>${l.name === r.trigger ? ' <span class="badge blocked">trigger</span>' : ""}</td>${cells}<td>${ruleCells.join("<br>") || '<span class="muted">–</span>'}</td></tr>`;
   }
   html += "</tbody></table>";
   $("result").innerHTML = html;
   $("allowBtn")?.addEventListener("click", () =>
-    change(`Ausnahme für ${r.suggestedAllow}`, "/api/domains", { domain: r.suggestedAllow, action: "allow", enabled: true }, () => check(r.input)));
+    change(`Exception for ${r.suggestedAllow}`, "/api/domains", { domain: r.suggestedAllow, action: "allow", enabled: true }, () => check(r.input)));
 }
 
 async function check(input) {
   $("checkBtn").disabled = true;
-  $("result").innerHTML = `<p class="muted">Prüfe ${esc(input)} …</p>`;
+  $("result").innerHTML = `<p class="muted">Checking ${esc(input)} …</p>`;
   try { renderResult(await api(`/api/check?domain=${encodeURIComponent(input)}`)); }
   catch (err) { $("result").innerHTML = `<p class="error">${esc(err.message)}</p>`; }
   finally { $("checkBtn").disabled = false; }
 }
 $("checkForm").addEventListener("submit", (e) => { e.preventDefault(); check($("domain").value); });
 
-// ---------- Status, Ausnahmen, Listen ----------
+// ---------- status, exceptions, lists ----------
 let status = null;
 
 function renderDomains(domains) {
-  if (!domains.length) { $("domains").innerHTML = `<p class="muted">Keine Einträge.</p>`; return; }
-  $("domains").innerHTML = `<table><thead><tr><th>An</th><th>Domain</th><th>Art</th><th>Kommentar</th></tr></thead><tbody>${domains.map((d, i) => `
-    <tr><td><label class="switch"><input type="checkbox" data-domain="${i}" ${d.enabled ? "checked" : ""} aria-label="${esc(d.domain)} an oder aus"><span></span></label></td>
-    <td><code>${esc(d.domain)}</code></td><td>${d.action === "allow" ? "Ausnahme" : '<span class="blocked">Eigene Sperre</span>'}</td><td class="muted">${esc(d.comment)}</td></tr>`).join("")}</tbody></table>`;
+  if (!domains.length) { $("domains").innerHTML = `<p class="muted">No entries.</p>`; return; }
+  $("domains").innerHTML = `<table><thead><tr><th>On</th><th>Domain</th><th>Type</th><th>Comment</th></tr></thead><tbody>${domains.map((d, i) => `
+    <tr><td><label class="switch"><input type="checkbox" data-domain="${i}" ${d.enabled ? "checked" : ""} aria-label="Turn ${esc(d.domain)} on or off"><span></span></label></td>
+    <td><code>${esc(d.domain)}</code></td><td>${d.action === "allow" ? "Exception" : '<span class="blocked">Custom block</span>'}</td><td class="muted">${esc(d.comment)}</td></tr>`).join("")}</tbody></table>`;
   $("domains").querySelectorAll("input[data-domain]").forEach((el) => el.addEventListener("change", async () => {
     const d = domains[Number(el.dataset.domain)];
-    el.checked = d.enabled; // Zustand erst nach Bestätigung ändern
-    await change(`${d.domain} ${d.enabled ? "ausschalten" : "einschalten"}`, "/api/domains", { domain: d.domain, action: d.action, enabled: !d.enabled });
+    el.checked = d.enabled; // only change the state after confirmation
+    await change(`Turn ${d.domain} ${d.enabled ? "off" : "on"}`, "/api/domains", { domain: d.domain, action: d.action, enabled: !d.enabled });
   }));
 }
 
 function renderLists(lists) {
-  if (!lists.length) { $("lists").innerHTML = `<p class="muted">Keine Filterlisten.</p>`; return; }
-  $("lists").innerHTML = `<table><thead><tr><th>An</th><th>Liste</th><th>Art</th><th class="num">Einträge laut Box</th><th class="num">Regeln im Index</th><th>Stand</th></tr></thead><tbody>${lists.map((l, i) => `
-    <tr><td><label class="switch"><input type="checkbox" data-list="${i}" ${l.enabled ? "checked" : ""} aria-label="${esc(l.name)} an oder aus"><span></span></label></td>
-    <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td>${l.action === "allow" ? "Freigabe" : "Sperre"}</td>
+  if (!lists.length) { $("lists").innerHTML = `<p class="muted">No filter lists.</p>`; return; }
+  $("lists").innerHTML = `<table><thead><tr><th>On</th><th>List</th><th>Type</th><th class="num">Entries (box)</th><th class="num">Rules in index</th><th>Loaded</th></tr></thead><tbody>${lists.map((l, i) => `
+    <tr><td><label class="switch"><input type="checkbox" data-list="${i}" ${l.enabled ? "checked" : ""} aria-label="Turn ${esc(l.name)} on or off"><span></span></label></td>
+    <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td>${l.action === "allow" ? "Allow" : "Block"}</td>
     <td class="num">${l.boxEntryCount != null ? fmt.format(l.boxEntryCount) : "–"}</td><td class="num">${fmt.format(l.indexedRules)}</td>
-    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString("de-DE") : '<span class="muted">lädt …</span>'}</td></tr>`).join("")}</tbody></table>`;
+    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`).join("")}</tbody></table>`;
   $("lists").querySelectorAll("input[data-list]").forEach((el) => el.addEventListener("change", async () => {
     const l = lists[Number(el.dataset.list)];
     el.checked = l.enabled;
-    await change(`Liste „${l.name}“ ${l.enabled ? "ausschalten" : "einschalten"}`, "/api/lists/toggle", { url: l.url, enabled: !l.enabled });
+    await change(`Turn list “${l.name}” ${l.enabled ? "off" : "on"}`, "/api/lists/toggle", { url: l.url, enabled: !l.enabled });
   }));
 }
 
 function renderTiles(s) {
-  if (!s || typeof s.total !== "number") { $("tiles").innerHTML = `<p class="muted">Die Box liefert keine Statistik.</p>`; return; }
+  if (!s || typeof s.total !== "number") { $("tiles").innerHTML = `<p class="muted">The box provides no statistics.</p>`; return; }
   const share = s.total ? (s.blocked / s.total) * 100 : 0;
-  $("tiles").innerHTML = [["DNS-Anfragen gesamt", fmt.format(s.total)], ["Davon gesperrt", fmt.format(s.blocked)], ["Anteil gesperrt", `${pct.format(share)} %`]]
+  $("tiles").innerHTML = [["DNS queries total", fmt.format(s.total)], ["Blocked", fmt.format(s.blocked)], ["Share blocked", `${pct.format(share)} %`]]
     .map(([label, value]) => `<div class="tile"><div class="label">${label}</div><div class="value">${value}</div></div>`).join("");
 }
 
@@ -286,26 +286,26 @@ async function loadStatus() {
 $("filterToggle").addEventListener("change", async () => {
   const want = $("filterToggle").checked;
   $("filterToggle").checked = !want;
-  await change(`DNS-Filter ${want ? "einschalten" : "ausschalten"}`, "/api/filter/toggle", { enabled: want });
+  await change(`Turn DNS filter ${want ? "on" : "off"}`, "/api/filter/toggle", { enabled: want });
 });
 
 $("addForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const domain = $("newDomain").value.trim();
   const action = $("newAction").value;
-  const res = await change(`${action === "allow" ? "Ausnahme" : "Eigene Sperre"} für ${domain}`, "/api/domains", { domain, action, enabled: true });
+  const res = await change(`${action === "allow" ? "Exception" : "Custom block"} for ${domain}`, "/api/domains", { domain, action, enabled: true });
   if (res) $("newDomain").value = "";
 });
 
 $("refreshLists").addEventListener("click", async () => {
   $("refreshLists").disabled = true;
-  $("refreshInfo").textContent = "Lade Listen …";
+  $("refreshInfo").textContent = "Loading lists …";
   try { renderLists((await api("/api/lists/refresh", {})).lists); $("refreshInfo").textContent = ""; }
   catch (err) { $("refreshInfo").textContent = err.message; }
   finally { $("refreshLists").disabled = false; }
 });
 
-// ---------- Statistik-Verlauf ----------
+// ---------- statistics history ----------
 let hours = 24;
 let points = [];
 
@@ -314,7 +314,7 @@ function drawChart() {
   const W = svg.clientWidth || 800, H = 240, m = { l: 40, r: 12, t: 10, b: 26 };
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   if (points.length < 2) {
-    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" class="axis">Noch zu wenige Messpunkte – der Verlauf füllt sich mit jedem Intervall.</text>`;
+    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" class="axis">Not enough data points yet – the history fills up with every interval.</text>`;
     return;
   }
   const t0 = points[0].ts, t1 = points[points.length - 1].ts;
@@ -330,7 +330,7 @@ function drawChart() {
   for (let i = 0; i <= ticks; i++) {
     const t = t0 + ((t1 - t0) / ticks) * i;
     const d = new Date(t);
-    const label = hours <= 24 ? d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+    const label = hours <= 24 ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
     g += `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === ticks ? "end" : "middle"}" class="axis">${label}</text>`;
   }
   const path = points.map((p, i) => `${i ? "L" : "M"}${x(p.ts).toFixed(1)},${y(p.share).toFixed(1)}`).join("");
@@ -350,7 +350,7 @@ function drawChart() {
     const cx = x(best.ts), cy = y(best.share);
     $("cross").setAttribute("x1", cx); $("cross").setAttribute("x2", cx); $("cross").setAttribute("visibility", "visible");
     $("dot").setAttribute("cx", cx); $("dot").setAttribute("cy", cy); $("dot").setAttribute("visibility", "visible");
-    tip.innerHTML = `<div class="muted">${new Date(best.ts).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</div><b>${pct.format(best.share)} %</b> gesperrt<br>${fmt.format(best.blocked)} von ${fmt.format(best.total)} Anfragen`;
+    tip.innerHTML = `<div class="muted">${new Date(best.ts).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}</div><b>${pct.format(best.share)} %</b> blocked<br>${fmt.format(best.blocked)} of ${fmt.format(best.total)} queries`;
     tip.style.display = "block";
     const left = (cx / W) * box.width;
     tip.style.left = `${Math.min(left + 12, box.width - tip.offsetWidth - 4)}px`;
@@ -370,9 +370,9 @@ async function loadStats() {
   } catch { points = []; }
   drawChart();
   $("statsTable").innerHTML = points.length
-    ? `<table><thead><tr><th>Ende des Intervalls</th><th class="num">Anfragen</th><th class="num">Gesperrt</th><th class="num">Anteil (%)</th></tr></thead><tbody>${points.slice().reverse().map((p) =>
-        `<tr><td>${new Date(p.ts).toLocaleString("de-DE")}</td><td class="num">${fmt.format(p.total)}</td><td class="num">${fmt.format(p.blocked)}</td><td class="num">${pct.format(p.share)}</td></tr>`).join("")}</tbody></table>`
-    : `<p class="muted">Keine Daten.</p>`;
+    ? `<table><thead><tr><th>End of interval</th><th class="num">Queries</th><th class="num">Blocked</th><th class="num">Share (%)</th></tr></thead><tbody>${points.slice().reverse().map((p) =>
+        `<tr><td>${new Date(p.ts).toLocaleString(undefined)}</td><td class="num">${fmt.format(p.total)}</td><td class="num">${fmt.format(p.blocked)}</td><td class="num">${pct.format(p.share)}</td></tr>`).join("")}</tbody></table>`
+    : `<p class="muted">No data.</p>`;
 }
 
 document.querySelectorAll(".ranges button").forEach((b) => b.addEventListener("click", () => {

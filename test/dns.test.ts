@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { decodeResponse, encodeQuery, isBlockAddress, TYPE } from "../src/dns.ts";
 
-/** Baut eine Antwort mit Namenskomprimierung: www.example.com CNAME cdn.example.net, A 0.0.0.0 */
+/** Builds a response with name compression: www.example.com CNAME cdn.example.net, A 0.0.0.0 */
 function sampleResponse(): Uint8Array {
   const q = encodeQuery(0x1234, "www.example.com", TYPE.A);
   const bytes = [...q];
@@ -14,7 +14,7 @@ function sampleResponse(): Uint8Array {
   return new Uint8Array(bytes);
 }
 
-test("decodeResponse liest CNAME-Kette und Sperradresse", () => {
+test("decodeResponse reads CNAME chain and block address", () => {
   const res = decodeResponse(sampleResponse());
   expect(res.id).toBe(0x1234);
   expect(res.rcode).toBe(0);

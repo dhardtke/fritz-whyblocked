@@ -1,6 +1,6 @@
 /**
- * Minimaler DNS-Client über UDP. Reicht für A, AAAA und CNAME; bewusst ohne Abhängigkeiten,
- * weil die Anfrage gezielt an einen bestimmten Server (Box per IPv4/IPv6, Referenz-DNS) gehen muss.
+ * Minimal DNS client over UDP. Enough for A, AAAA and CNAME; deliberately dependency-free,
+ * because each query must go to one specific server (the box via IPv4/IPv6, the reference DNS).
  */
 import { isIPv6 } from "node:net";
 
@@ -11,7 +11,7 @@ export interface DnsRecord {
   name: string;
   type: number;
   ttl: number;
-  /** IP-Adresse (A/AAAA), Zielname (CNAME) oder leer bei unbekanntem Typ */
+  /** IP address (A/AAAA), target name (CNAME), or empty for unknown types */
   data: string;
 }
 
@@ -27,7 +27,7 @@ export function encodeQuery(id: number, name: string, type: number): Uint8Array 
   const labels = name.replace(/\.$/, "").split(".").filter(Boolean);
   const qname = labels.flatMap((l) => {
     const bytes = new TextEncoder().encode(l);
-    if (bytes.length > 63) throw new Error(`DNS-Label zu lang: ${l}`);
+    if (bytes.length > 63) throw new Error(`DNS label too long: ${l}`);
     return [bytes.length, ...bytes];
   });
   const buf = new Uint8Array(12 + qname.length + 1 + 4);
@@ -48,7 +48,7 @@ function readName(buf: Uint8Array, offset: number): [string, number] {
   let end = -1;
   for (let jumps = 0; jumps < 64; jumps++) {
     const len = buf[pos];
-    if (len === undefined) throw new Error("DNS-Antwort abgeschnitten");
+    if (len === undefined) throw new Error("DNS response truncated");
     if (len === 0) {
       return [labels.join("."), end >= 0 ? end : pos + 1];
     }
@@ -60,13 +60,13 @@ function readName(buf: Uint8Array, offset: number): [string, number] {
     labels.push(new TextDecoder().decode(buf.subarray(pos + 1, pos + 1 + len)));
     pos += 1 + len;
   }
-  throw new Error("DNS-Antwort mit zu vielen Komprimierungs-Sprüngen");
+  throw new Error("DNS response with too many compression jumps");
 }
 
 function formatIPv6(bytes: Uint8Array): string {
   const groups: string[] = [];
   for (let i = 0; i < 16; i += 2) groups.push((((bytes[i] ?? 0) << 8) | (bytes[i + 1] ?? 0)).toString(16));
-  // längste Null-Folge durch :: ersetzen
+  // replace the longest run of zeros with ::
   let best = -1, bestLen = 0;
   for (let i = 0; i < 8; ) {
     if (groups[i] !== "0") { i++; continue; }
@@ -104,7 +104,7 @@ export function decodeResponse(buf: Uint8Array): DnsResponse & { id: number } {
   return { id, rcode: flags & 0x000f, truncated: (flags & 0x0200) !== 0, answers };
 }
 
-/** Eine Anfrage an einen bestimmten Server; zwei Versuche mit Timeout. */
+/** One query to a specific server; two attempts with timeout. */
 export async function query(server: string, name: string, type: RecordType, timeoutMs = 2500): Promise<DnsResponse> {
   const v6 = isIPv6(server);
   let lastError: unknown;
@@ -115,7 +115,7 @@ export async function query(server: string, name: string, type: RecordType, time
         let socket: { close(): void } | undefined;
         const timer = setTimeout(() => {
           socket?.close();
-          reject(new Error(`Keine Antwort von ${server} für ${name} (${type})`));
+          reject(new Error(`No response from ${server} for ${name} (${type})`));
         }, timeoutMs);
         Bun.udpSocket({
           hostname: v6 ? "::" : "0.0.0.0",
@@ -146,7 +146,7 @@ export async function query(server: string, name: string, type: RecordType, time
   throw lastError;
 }
 
-/** Adresse, mit der der FRITZ!Box-DNS-Filter eine Sperre beantwortet. */
+/** Address the FRITZ!Box DNS filter answers with when it blocks. */
 export function isBlockAddress(ip: string): boolean {
   return ip === "0.0.0.0" || ip === "::";
 }

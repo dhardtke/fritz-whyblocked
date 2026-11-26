@@ -1,6 +1,6 @@
 /**
- * Analyse auf Abruf: CNAME-Kette über den Referenz-DNS auflösen, jedes Glied bei der Box
- * gegenprüfen (IPv4 und IPv6) und die Regeln suchen, die dafür verantwortlich sind.
+ * On-demand analysis: resolve the CNAME chain via the reference DNS, probe each link at the box
+ * (IPv4 and IPv6) and find the rules responsible.
  */
 import { isBlockAddress, RCODE_NAMES, TYPE, type DnsResponse, type RecordType } from "./dns.ts";
 import type { DomainEntry } from "./fritz.ts";
@@ -27,7 +27,7 @@ export interface BoxProbe {
 
 export interface CustomHit {
   entry: DomainEntry;
-  /** Eintrag gilt genau für diesen Namen (sonst über eine Eltern-Domain) */
+  /** Entry applies to exactly this name (otherwise via a parent domain) */
   exact: boolean;
 }
 
@@ -46,31 +46,31 @@ export interface Analysis {
   referenceRcode?: string;
   referenceError?: string;
   blocked: boolean;
-  /** letztes Glied, das die Box sperrt */
+  /** last link the box blocks */
   trigger?: string;
-  /** Listen und eigene Sperren, die das auslösende Glied sperren */
+  /** Lists and custom blocks that block the triggering link */
   responsible: { lists: RuleHit[]; custom: CustomHit[] };
-  /** Domain, für die eine Ausnahme die Sperre aufheben sollte */
+  /** Domain for which an exception should lift the block */
   suggestedAllow?: string;
   notes: string[];
 }
 
-/** Macht aus Domain oder URL einen kleingeschriebenen Hostnamen (IDN als Punycode). */
+/** Turns a domain or URL into a lowercase hostname (IDN as punycode). */
 export function normalizeDomain(input: string): string {
   const trimmed = input.trim();
-  if (!trimmed) throw new Error("Bitte eine Domain oder URL eingeben.");
+  if (!trimmed) throw new Error("Please enter a domain or URL.");
   let host: string;
   try {
     host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`).hostname;
   } catch {
-    throw new Error(`"${trimmed}" ist keine gültige Domain oder URL.`);
+    throw new Error(`"${trimmed}" is not a valid domain or URL.`);
   }
   host = host.replace(/\.$/, "").toLowerCase();
-  if (!host.includes(".") || host.startsWith("[")) throw new Error(`"${trimmed}" ist keine gültige Domain.`);
+  if (!host.includes(".") || host.startsWith("[")) throw new Error(`"${trimmed}" is not a valid domain.`);
   return host;
 }
 
-/** Folgt den CNAME-Einträgen einer Antwort ab `name`. */
+/** Follows the CNAME records of a response starting at `name`. */
 export function cnameChain(name: string, res: DnsResponse): string[] {
   const chain = [name];
   const seen = new Set(chain);
@@ -119,10 +119,10 @@ export async function analyze(input: string, deps: AnalysisDeps): Promise<Analys
     const res = await deps.query(deps.referenceDns, domain, "A");
     referenceRcode = RCODE_NAMES[res.rcode] ?? String(res.rcode);
     names = cnameChain(domain, res);
-    if (res.rcode === 3) notes.push(`Die Domain existiert laut ${deps.referenceDns} nicht (NXDOMAIN). Dann sperrt nicht die Box.`);
+    if (res.rcode === 3) notes.push(`According to ${deps.referenceDns} the domain does not exist (NXDOMAIN), so the box is not what blocks it.`);
   } catch (err) {
     referenceError = (err as Error).message;
-    notes.push(`Referenz-DNS ${deps.referenceDns} nicht erreichbar; CNAME-Kette unbekannt, nur die Domain selbst wird geprüft.`);
+    notes.push(`Reference DNS ${deps.referenceDns} unreachable; CNAME chain unknown, only the domain itself is checked.`);
   }
 
   const chain: ChainLink[] = await Promise.all(
@@ -142,9 +142,9 @@ export async function analyze(input: string, deps: AnalysisDeps): Promise<Analys
     const blockedOn = new Set(link.probes.filter((p) => p.blocked).map((p) => p.server));
     const answeredOn = new Set(link.probes.filter((p) => !p.error).map((p) => p.server));
     if (blockedOn.size > 0 && blockedOn.size < answeredOn.size) {
-      notes.push(`${link.name}: Die Box antwortet je nach Adresse unterschiedlich (gesperrt über ${[...blockedOn].join(", ")}).`);
+      notes.push(`${link.name}: the box answers differently depending on the address (blocked via ${[...blockedOn].join(", ")}).`);
     }
-    if (link.probes.every((p) => p.error)) notes.push(`${link.name}: Die Box hat auf keine Anfrage geantwortet.`);
+    if (link.probes.every((p) => p.error)) notes.push(`${link.name}: the box did not answer any query.`);
   }
 
   const blockedLinks = chain.filter((l) => l.blockedByBox);
@@ -157,20 +157,20 @@ export async function analyze(input: string, deps: AnalysisDeps): Promise<Analys
   if (triggerLink) {
     if (triggerLink !== chain[0]) {
       notes.push(
-        `Gesperrt ist das CNAME-Ziel ${triggerLink.name}, nicht ${domain} selbst. Eine Ausnahme für ${domain} hilft nicht, sie muss für ${triggerLink.name} gelten.`,
+        `The blocked name is the CNAME target ${triggerLink.name}, not ${domain} itself. An exception for ${domain} does not help; it has to be for ${triggerLink.name}.`,
       );
     }
     if (responsible.lists.length === 0 && responsible.custom.length === 0) {
       const disabledOnly = triggerLink.ruleHits.some((h) => !h.listEnabled);
       notes.push(
         disabledOnly
-          ? "Nur deaktivierte Listen enthalten eine passende Regel. Vermutlich hat die Box ihren Stand noch nicht aktualisiert."
-          : "Keine passende Regel in den geladenen Listen gefunden. Mögliche Gründe: Listen noch nicht geladen, die Box hat einen anderen Listenstand oder legt eine Regel anders aus.",
+          ? "Only disabled lists contain a matching rule. The box has probably not updated its state yet."
+          : "No matching rule found in the loaded lists. Possible reasons: lists not loaded yet, the box has a different list version, or it interprets a rule differently.",
       );
     }
     const allowed = triggerLink.customHits.filter((h) => h.entry.enabled && h.entry.action === "allow");
     if (allowed.length > 0) {
-      notes.push(`Für ${triggerLink.name} gibt es schon eine aktive Ausnahme (${allowed.map((h) => h.entry.domain).join(", ")}), die Box sperrt trotzdem.`);
+      notes.push(`There is already an active exception for ${triggerLink.name} (${allowed.map((h) => h.entry.domain).join(", ")}), but the box still blocks it.`);
     }
   }
 

@@ -10,7 +10,7 @@ test("normalizeDomain", () => {
   expect(() => normalizeDomain("localhost")).toThrow();
 });
 
-test("gesperrtes CNAME-Ziel wird als Auslöser erkannt", async () => {
+test("blocked CNAME target is detected as the trigger", async () => {
   const query: QueryFn = async (server, name, type) => {
     if (server === "1.1.1.1") {
       return { rcode: 0, truncated: false, answers: [
@@ -27,13 +27,13 @@ test("gesperrtes CNAME-Ziel wird als Auslöser erkannt", async () => {
     boxServers: [{ label: "IPv4", address: "192.168.178.1" }],
     domains: [],
     lookupRules: async (name) => name === "x.cdn.example.net"
-      ? [{ listName: "Testliste", listUrl: "https://l", listEnabled: true, listAction: "block", ruleDomain: "cdn.example.net", kind: KIND.WITH_SUBDOMAINS, kindLabel: "", certain: true }]
+      ? [{ listName: "Test list", listUrl: "https://l", listEnabled: true, listAction: "block", ruleDomain: "cdn.example.net", kind: KIND.WITH_SUBDOMAINS, kindLabel: "", certain: true }]
       : [],
   });
   expect(result.blocked).toBe(true);
   expect(result.chain.map((l) => l.name)).toEqual(["www.example.com", "x.cdn.example.net"]);
   expect(result.trigger).toBe("x.cdn.example.net");
   expect(result.suggestedAllow).toBe("x.cdn.example.net");
-  expect(result.responsible.lists.map((h) => h.listName)).toEqual(["Testliste"]);
-  expect(result.notes.some((n) => n.includes("CNAME-Ziel"))).toBe(true);
+  expect(result.responsible.lists.map((h) => h.listName)).toEqual(["Test list"]);
+  expect(result.notes.some((n) => n.includes("CNAME target"))).toBe(true);
 });
