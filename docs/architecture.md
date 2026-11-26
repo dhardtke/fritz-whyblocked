@@ -75,9 +75,9 @@ Requests other than `GET` need the header `X-WhyBlocked: 1`, which a cross-site 
 ## Single-file build
 
 `src/scripts/build.ts` bundles `src/server.ts` with `Bun.build` and replaces `src/embedded.ts` with a module holding
-`public/index.html` as a string, stamped with the commit and build time. During development `embedded.ts` reads the
-file from disk instead. The build writes `bun-version` next to the bundle, so the server can run each release on the
-Bun that built it (`docs/deployment.md`).
+`public/index.html` as a string, stamped with the commit and build time. During development `embedded.ts` imports the
+file as text instead, so `bun run start:dev` restarts when it changes. The build writes `bun-version` next to the
+bundle, so the server can run each release on the Bun that built it (`docs/deployment.md`).
 
 ## Tests
 
