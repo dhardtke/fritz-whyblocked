@@ -25,8 +25,7 @@ and the tests catch most steps that are skipped, but not all of them.
 1. Read it in `loadConfig()` in `src/config.ts`, through `env()` or `num()` so an empty value means unset; a secret
    goes through `secret()` and gets a systemd credential name.
 2. Add it to `.env.example` and to the table in `README.md`, and cover its parsing in `src/config.test.ts`.
-3. If the server must have it, add it to `/etc/fritz-whyblocked/config.env` on the server before the deploy, and to
-   `deploy/fritz-whyblocked.service` if it is a credential.
+3. If the server must have it, add it to `/home/whyblocked/app/fritz-whyblocked.env` on the server before the deploy.
 
 ## A filter-list format
 

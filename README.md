@@ -66,7 +66,7 @@ How the code is organized, the conventions it follows (pinned dependencies, Reno
 
 ## Deployment
 
-Pushes to `main` deploy through a self-hosted GitHub Actions runner to a Fedora server, where the app runs as a hardened systemd service. [docs/deployment.md](docs/deployment.md) covers the pipeline, the server setup and operating it.
+Pushes to `main` deploy through a self-hosted GitHub Actions runner to a Fedora server, where the app runs as a systemd user service. [docs/deployment.md](docs/deployment.md) covers the pipeline, the server setup and operating it.
 
 ## Open points
 

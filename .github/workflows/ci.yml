@@ -60,4 +60,4 @@ jobs:
           name: fritz-whyblocked
           path: dist
       - shell: bash
-        run: tar -C dist -c fritz-whyblocked.js fritz-whyblocked.js.map bun-version | sudo /usr/local/bin/fritz-whyblocked-deploy "$GITHUB_SHA"
+        run: tar -C dist -c fritz-whyblocked.js fritz-whyblocked.js.map bun-version | sudo -u whyblocked /usr/local/bin/fritz-whyblocked-deploy "$GITHUB_SHA"

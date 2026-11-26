@@ -2,17 +2,17 @@
 # Installs one fritz-whyblocked build as a release together with the Bun it was built with,
 # switches the service onto the release and rolls code and Bun back if it does not come up healthy.
 #
-#   tar -C dist -c fritz-whyblocked.js fritz-whyblocked.js.map bun-version | sudo fritz-whyblocked-deploy <commit sha>
+#   tar -C dist -c fritz-whyblocked.js fritz-whyblocked.js.map bun-version | sudo -u whyblocked fritz-whyblocked-deploy <commit sha>
 #
-# Runs as root, because fritz-whyblocked is a hardened system service; see docs/deployment.md.
+# Runs as the whyblocked user and drives its systemd user service; see docs/deployment.md.
 set -euo pipefail
 
-readonly APP=/opt/fritz-whyblocked
+readonly APP=/home/whyblocked/app
 readonly BUNS=$APP/bun
 readonly RELEASES=$APP/releases
 readonly CURRENT=$APP/current
 readonly SERVICE=fritz-whyblocked
-# PORT in /etc/fritz-whyblocked/config.env. The service listens on 127.0.0.1 with or without UI_PASSWORD.
+# PORT in $APP/fritz-whyblocked.env. The service listens on 127.0.0.1 with or without UI_PASSWORD.
 readonly PORT=8053
 readonly KEEP_RELEASES=5
 
@@ -21,17 +21,18 @@ fail() {
   exit 1
 }
 
-[[ $(id -u) == 0 ]] || fail 'run this as root'
+[[ $(id -un) == whyblocked ]] || fail 'run this as the whyblocked user'
 [[ $# -eq 1 ]] || fail 'usage: fritz-whyblocked-deploy <commit sha> < build.tar'
 readonly sha=$1
 [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "not a commit sha: $sha"
 
-# The service user only reads releases.
-umask 022
+# sudo neither points systemctl --user at this user's manager nor leaves a working directory whyblocked
+# may enter.
+export HOME=/home/whyblocked XDG_RUNTIME_DIR=/run/user/$(id -u)
 cd /
 
 mkdir -p -- "$RELEASES" "$BUNS"
-exec 9>"$APP/.deploy.lock"
+exec 9>"$XDG_RUNTIME_DIR/fritz-whyblocked-deploy.lock"
 flock -n 9 || fail 'another deploy is running'
 
 point_current_at() {
@@ -86,10 +87,6 @@ install_bun() {
   rm -rf -- "${BUNS:?}/$version"
   mv -T -- "$download/$asset" "$BUNS/$version"
   rm -rf -- "$download"
-  # mv keeps the label of the download directory; systemd must be allowed to execute bun.
-  if command -v restorecon >/dev/null; then
-    restorecon -R -- "$BUNS/$version"
-  fi
 }
 
 # Removes every Bun no remaining release runs.
@@ -126,17 +123,17 @@ rm -rf -- "$release"
 mv -T -- "$release.tmp" "$release"
 
 point_current_at "$release"
-systemctl restart "$SERVICE"
+systemctl --user restart "$SERVICE"
 
 # Puts the previous release back, then fails the deploy.
 roll_back() {
   echo "fritz-whyblocked-deploy: $*, rolling back" >&2
-  journalctl -u "$SERVICE" -n 50 --no-pager >&2 || true
+  journalctl --user -u "$SERVICE" -n 50 --no-pager >&2 || true
   if [[ -n $previous ]]; then
     point_current_at "$previous"
-    systemctl restart "$SERVICE"
+    systemctl --user restart "$SERVICE"
   else
-    systemctl stop "$SERVICE"
+    systemctl --user stop "$SERVICE"
   fi
   exit 1
 }

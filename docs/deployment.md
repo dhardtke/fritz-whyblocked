@@ -16,45 +16,45 @@ The rest of this document covers the repository's own server.
 
 Every push to `main` runs `.github/workflows/ci.yml`. The `check` job runs format, lint, typecheck, tests and the build
 on GitHub and uploads `dist/`. The `deploy` job runs on a self-hosted runner on the server, which accepts no inbound
-connections, and pipes the build into `sudo fritz-whyblocked-deploy <sha>`. The `deploy` job is skipped unless the
-push changed something the build reads: `src/` other than `*.test.ts`, `public/`, `package.json`, `bun.lock`,
-`bunfig.toml`, `tsconfig.json` or `.bun-version`. A push whose previous head is unknown, such as a force push, always
-deploys. Pull requests get the `check` job only. Actions are pinned to commit SHAs, and CI's Bun comes from
+connections, and pipes the build into `sudo -u whyblocked fritz-whyblocked-deploy <sha>`. The `deploy` job is skipped
+unless the push changed something the build reads: `src/` other than `*.test.ts`, `public/`, `package.json`,
+`bun.lock`, `bunfig.toml`, `tsconfig.json` or `.bun-version`. A push whose previous head is unknown, such as a force
+push, always deploys. Pull requests get the `check` job only. Actions are pinned to commit SHAs, and CI's Bun comes from
 `.bun-version`.
 
-fritz-whyblocked runs as the hardened system service `fritz-whyblocked` (`deploy/fritz-whyblocked.service`) under the
-`whyblocked` user, so restarting it takes root. The runner's user, `fritz-whyblocked-gh-runner`, may therefore run
-`/usr/local/bin/fritz-whyblocked-deploy` as root, and nothing else (`deploy/fritz-whyblocked-gh-runner.sudoers`). The
+The runner's user, `fritz-whyblocked-gh-runner`, may run only `/usr/local/bin/fritz-whyblocked-deploy` as `whyblocked`
+(`deploy/fritz-whyblocked-gh-runner.sudoers`), and nothing as root. fritz-whyblocked runs as a systemd user service of
+`whyblocked` (`deploy/fritz-whyblocked.service`), kept running by lingering, so the deploy restarts it without root. The
 script accepts nothing but a commit SHA and a tar of the three build files.
 
 `deploy/fritz-whyblocked-deploy`:
 
-1. unpacks the build into `/opt/fritz-whyblocked/releases/<sha>`
-2. installs the Bun named in `bun-version` into `/opt/fritz-whyblocked/bun/<version>`, verified against the release's
+1. unpacks the build into `/home/whyblocked/app/releases/<sha>`
+2. installs the Bun named in `bun-version` into `/home/whyblocked/app/bun/<version>`, verified against the release's
    `SHASUMS256.txt`, and links it as the release's `bun`
-3. points `/opt/fritz-whyblocked/current` at the release and restarts the service
+3. points `/home/whyblocked/app/current` at the release and restarts the service
 4. rolls back to the previous release and its Bun if `/api/health` does not answer within 30 seconds
 5. keeps five releases, and the Bun versions they use
 
-The list cache and the statistics in `/var/lib/fritz-whyblocked` (the unit's `StateDirectory`) are not part of a
-release and need no migration, so a deploy does not back them up. Each release runs on the Bun that built it, so
-upgrading Bun is just the pull request that bumps `.bun-version`. The paths and port 8053 are constants at the top of
-the script; change `PORT` there too if `config.env` sets another.
+The list cache and the statistics in `/home/whyblocked/app/data` (`DATA_DIR` relative to the unit's working directory)
+are not part of a release and need no migration, so a deploy does not back them up. Each release runs on the Bun that
+built it, so upgrading Bun is just the pull request that bumps `.bun-version`. The paths and port 8053 are constants at
+the top of the script; change `PORT` there too if `fritz-whyblocked.env` sets another.
 
 ## Server setup
 
 Once, on the Fedora server, with the repository's `deploy/` directory and `.env.example` copied over:
 
 ```sh
-sudo dnf install -y curl unzip tar util-linux policycoreutils-python-utils
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin whyblocked
-sudo mkdir -p /opt/fritz-whyblocked /etc/fritz-whyblocked
-sudo cp .env.example /etc/fritz-whyblocked/config.env   # adjust, leave passwords empty
-sudo sh -c 'umask 077; printf %s "…" > /etc/fritz-whyblocked/fritz-password; printf %s "…" > /etc/fritz-whyblocked/ui-password'
-# systemd must be allowed to execute the Bun binaries the deploy installs
-sudo semanage fcontext -a -t bin_t '/opt/fritz-whyblocked/bun/[^/]+/bun'
-sudo install -m 0644 deploy/fritz-whyblocked.service /etc/systemd/system/fritz-whyblocked.service
-sudo systemctl daemon-reload && sudo systemctl enable fritz-whyblocked
+sudo dnf install -y curl unzip tar util-linux
+sudo useradd --system --create-home --home-dir /home/whyblocked --shell /sbin/nologin whyblocked
+sudo loginctl enable-linger whyblocked
+sudo -u whyblocked mkdir -p /home/whyblocked/app /home/whyblocked/.config/systemd/user
+sudo install -o whyblocked -g whyblocked -m 0600 .env.example /home/whyblocked/app/fritz-whyblocked.env
+sudoedit -u whyblocked /home/whyblocked/app/fritz-whyblocked.env   # set FRITZ_PASSWORD, UI_PASSWORD and the rest
+sudo install -o whyblocked -g whyblocked -m 0644 deploy/fritz-whyblocked.service /home/whyblocked/.config/systemd/user/fritz-whyblocked.service
+sudo systemctl --user -M whyblocked@ daemon-reload
+sudo systemctl --user -M whyblocked@ enable fritz-whyblocked
 sudo install -m 0755 deploy/fritz-whyblocked-deploy /usr/local/bin/fritz-whyblocked-deploy
 sudo install -m 0440 deploy/fritz-whyblocked-gh-runner.sudoers /etc/sudoers.d/fritz-whyblocked-gh-runner
 sudo firewall-cmd --permanent --add-port=8053/tcp && sudo firewall-cmd --reload
@@ -62,7 +62,7 @@ sudo firewall-cmd --permanent --add-port=8053/tcp && sudo firewall-cmd --reload
 
 The first deploy creates the release and Bun, and starts the service. CI never updates
 `deploy/fritz-whyblocked.service` or `deploy/fritz-whyblocked-deploy`: after changing one, rerun its `install` line,
-and for the unit also `daemon-reload` and `restart fritz-whyblocked`.
+and for the unit also `daemon-reload` and `restart fritz-whyblocked` (both with `--user -M whyblocked@`).
 
 Then the runner, with a token from _Settings → Actions → Runners → New self-hosted runner_:
 
@@ -89,7 +89,10 @@ Finally, create the `production` environment (_Settings → Environments_) and r
 ## Operating
 
 ```sh
-sudo systemctl status fritz-whyblocked
-journalctl -u fritz-whyblocked -f
+sudo systemctl --user -M whyblocked@ status fritz-whyblocked
+sudo journalctl _SYSTEMD_USER_UNIT=fritz-whyblocked.service -f        # -p warning or -p err to filter
 curl -s http://127.0.0.1:8053/api/health
 ```
+
+The passwords live in `/home/whyblocked/app/fritz-whyblocked.env` (mode `0600`). Keep values with `$` signs in single
+quotes, or systemd expands them. Without the file the service does not start. After changing it, restart the service.
