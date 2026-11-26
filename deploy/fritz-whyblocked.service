@@ -1,0 +1,26 @@
+[Unit]
+Description=fritz-whyblocked – warum sperrt der DNS-Filter der FRITZ!Box?
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=whyblocked
+Group=whyblocked
+WorkingDirectory=/opt/fritz-whyblocked
+EnvironmentFile=/etc/fritz-whyblocked/config.env
+LoadCredential=fritz-password:/etc/fritz-whyblocked/fritz-password
+LoadCredential=ui-password:/etc/fritz-whyblocked/ui-password
+ExecStart=/usr/local/bin/bun run src/server.ts
+Restart=always
+RestartSec=5
+
+StateDirectory=fritz-whyblocked
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
