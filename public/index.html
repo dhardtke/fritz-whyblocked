@@ -345,6 +345,82 @@
         color: var(--text-secondary);
         margin-top: 10px;
       }
+      /* phones: the entry and list tables become one card per row */
+      @media (max-width: 640px) {
+        table.editable thead,
+        table.lists thead {
+          display: none;
+        }
+        table.editable tr,
+        table.lists tr {
+          display: grid;
+          gap: 6px 10px;
+          align-items: center;
+          padding: 10px 0;
+          border-bottom: 1px solid var(--border);
+        }
+        table.editable td,
+        table.lists td {
+          display: block;
+          padding: 0;
+          border: 0;
+        }
+        table.editable tr {
+          grid-template-columns: 40px 9em minmax(0, 1fr) auto;
+          grid-template-areas:
+            'on domain domain remove'
+            '. action comment comment';
+        }
+        table.editable td:nth-child(1) {
+          grid-area: on;
+        }
+        table.editable td:nth-child(2) {
+          grid-area: domain;
+        }
+        table.editable td:nth-child(3) {
+          grid-area: action;
+        }
+        table.editable td:nth-child(4) {
+          grid-area: comment;
+        }
+        table.editable td:nth-child(5) {
+          grid-area: remove;
+        }
+        table.lists tr {
+          grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1fr);
+          align-items: start;
+        }
+        table.lists td:nth-child(1) {
+          grid-column: 1;
+          grid-row: 1 / span 3;
+        }
+        table.lists td:nth-child(2) {
+          grid-column: 2 / 4;
+        }
+        table.lists td.num {
+          text-align: left;
+        }
+        table.lists td[data-label]::before {
+          content: attr(data-label);
+          display: block;
+          color: var(--text-secondary);
+          font-size: 12px;
+        }
+        tr.changed > td:first-child,
+        tr.added > td:first-child,
+        tr.deleted > td:first-child {
+          box-shadow: none;
+        }
+        tr.changed,
+        tr.added {
+          padding-left: 10px;
+          box-shadow: inset 3px 0 var(--series-1);
+        }
+        tr.deleted {
+          padding-left: 10px;
+          box-shadow: inset 3px 0 var(--critical);
+        }
+      }
     </style>
   </head>
   <body>
@@ -728,14 +804,14 @@
           return;
         }
         $('lists').innerHTML =
-          `<table><thead><tr><th>On</th><th>List</th><th>Type</th><th class="num">Entries (box)</th><th class="num">Rules in index</th><th>Loaded</th></tr></thead><tbody>${lists
+          `<table class="lists"><thead><tr><th>On</th><th>List</th><th>Type</th><th class="num">Entries (box)</th><th class="num">Rules in index</th><th>Loaded</th></tr></thead><tbody>${lists
             .map((l) => {
               const enabled = draft.lists.get(l.url) ?? l.enabled;
               return `
     <tr class="${draft.lists.has(l.url) ? 'changed' : ''}"><td><label class="switch"><input type="checkbox" data-list-url="${esc(l.url)}" data-was="${l.enabled}" ${enabled ? 'checked' : ''} aria-label="Turn ${esc(l.name)} on or off"><span></span></label></td>
-    <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td>${l.action === 'allow' ? 'Allow' : 'Block'}</td>
-    <td class="num">${l.boxEntryCount != null ? fmt.format(l.boxEntryCount) : '–'}</td><td class="num">${fmt.format(l.indexedRules)}</td>
-    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`;
+    <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td data-label="Type">${l.action === 'allow' ? 'Allow' : 'Block'}</td>
+    <td class="num" data-label="Entries (box)">${l.boxEntryCount != null ? fmt.format(l.boxEntryCount) : '–'}</td><td class="num" data-label="Rules in index">${fmt.format(l.indexedRules)}</td>
+    <td data-label="Loaded">${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`;
             })
             .join('')}</tbody></table>`;
       }
@@ -847,7 +923,8 @@
           const v = (yMax / 4) * i;
           g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end" class="axis">${pct.format(v)}</text>`;
         }
-        const ticks = 5;
+        // A time label takes about 90 px; fewer of them on a narrow chart keeps them from overlapping.
+        const ticks = Math.max(2, Math.min(5, Math.floor((W - m.l - m.r) / 90)));
         for (let i = 0; i <= ticks; i++) {
           const t = t0 + ((t1 - t0) / ticks) * i;
           const d = new Date(t);
