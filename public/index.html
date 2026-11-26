@@ -568,7 +568,7 @@
           $('boxError').textContent = status.boxError ? `FRITZ!Box: ${status.boxError}` : '';
           $('filterToggleWrap').hidden = status.filterEnabled === null;
           $('filterToggle').checked = Boolean(status.filterEnabled);
-          $('filterToggleText').textContent = status.filterEnabled ? 'an' : 'aus';
+          $('filterToggleText').textContent = status.filterEnabled ? 'on' : 'off';
           renderTiles(status.statistics);
           renderDomains(status.domains);
           renderLists(status.lists);
