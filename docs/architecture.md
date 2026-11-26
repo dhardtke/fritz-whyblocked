@@ -100,6 +100,17 @@ Requests other than `GET` need the header `X-WhyBlocked: 1`, which a cross-site 
 file as text instead, so `bun run start:dev` restarts when it changes. The build writes `bun-version` next to the
 bundle, so the server can run each release on the Bun that built it (`docs/deployment.md`).
 
+## Screenshots
+
+`bun run screenshots` retakes `docs/screenshots/`, a light and a dark version of each view the README shows. It never
+imports `server.ts`, so it reads no configuration, no `DATA_DIR` and no box: it serves `public/index.html` in-process
+with a fake API whose domains, lists and statistics are made up (`example.*` names, documentation addresses), and runs
+the real `analyze()` against a fake DNS and rule lookup, so the check result keeps the shape the UI expects. It drives
+a local Chrome or Edge (or `WHYBLOCKED_BROWSER`) headless over the DevTools protocol with a throwaway profile. The
+clock in the data is fixed and the browser runs in UTC with the page's default-locale formatters pinned to `en-US`
+(headless Edge formats with the OS region whatever `--lang` says), so a retake only changes what the UI changed. Edge
+writes no `DevToolsActivePort` with `--remote-debugging-port=0`, hence the explicitly chosen port.
+
 ## Tests
 
 Tests sit beside their module as `*.test.ts` and use `bun:test`. They never reach a box or the network: `analyze()`

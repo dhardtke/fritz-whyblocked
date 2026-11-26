@@ -12,6 +12,7 @@
     "fmt:check": "bun fmt --no-script --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "screenshots": "bun run src/scripts/screenshots.ts",
     "start": "bun run src/server.ts",
     "start:dev": "bun --watch run src/server.ts",
     "test": "bun test --parallel",

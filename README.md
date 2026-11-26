@@ -6,6 +6,54 @@ Enter a domain or URL. fritz-whyblocked shows whether the FRITZ!Box DNS filter b
 
 > Not an official product of FRITZ! GmbH; not affiliated with it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/check-dark.png">
+  <img src="docs/screenshots/check-light.png" alt="A check of metrics.example.com: blocked, because its CNAME target collect.tracking.example.net is on two filter lists, with a button to add an exception for that target">
+</picture>
+
+## A look around
+
+The box's own statistics are sampled every few minutes, so the share of blocked queries can be followed over a day, a week or a month.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/statistics-dark.png">
+  <img src="docs/screenshots/statistics-light.png" alt="The box statistics: total and blocked DNS queries, and a chart of the blocked share over the last 24 hours">
+</picture>
+
+Exceptions, custom blocks and filter lists are edited in place. Nothing reaches the box until you save, and then only after a dry run lists the requests.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/filter-dark.png">
+  <img src="docs/screenshots/filter-light.png" alt="The exceptions and filter lists with three unsaved changes marked in blue and a bar to save or discard them">
+</picture>
+
+On a phone, the tables turn into one card per entry or list.
+
+<table>
+  <tr>
+    <td width="33%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-check-dark.png">
+        <img src="docs/screenshots/mobile-check-light.png" alt="A check on a phone">
+      </picture>
+    </td>
+    <td width="33%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-statistics-dark.png">
+        <img src="docs/screenshots/mobile-statistics-light.png" alt="The box statistics on a phone">
+      </picture>
+    </td>
+    <td width="33%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-filter-dark.png">
+        <img src="docs/screenshots/mobile-filter-light.png" alt="Editing exceptions on a phone, one card per entry">
+      </picture>
+    </td>
+  </tr>
+</table>
+
+The screenshots show made-up data: `bun run screenshots` serves the UI with a fixed set of example domains, lists and statistics and never talks to a box.
+
 ## How the analysis works
 
 1. The CNAME chain is resolved via a reference DNS (default `1.1.1.1`).

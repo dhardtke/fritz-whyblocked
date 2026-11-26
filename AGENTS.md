@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun start                # the server on http://127.0.0.1:8053, configured through .env
 bun run start:dev        # same, with --watch
 bun run build            # one-file deployment build: dist/fritz-whyblocked.js (+ .map, bun-version)
+bun run screenshots      # retake the README's screenshots from made-up data (needs Chrome or Edge, or WHYBLOCKED_BROWSER)
 bun test --parallel      # the test suite; none of it talks to a real box or the network
 bun test --parallel src/rules.test.ts # one file
 bun test --parallel -t "parseLine"    # one test / describe block by name
@@ -31,7 +32,7 @@ stood on the date it carries, so an old path in one is a record, not a bug.
 - `src/fritz.ts` — login and the box's DNS filter API
 - `src/store.ts` — the statistics history in SQLite
 - `public/index.html` — the whole UI, one file with no build step
-- `src/scripts/` — `build` and `pre-commit-checks`, a Claude Code hook in `.claude/settings.json` that blocks
+- `src/scripts/` — `build`, `screenshots` and `pre-commit-checks`, a Claude Code hook in `.claude/settings.json` that blocks
   `git commit` until `fmt:check`, `lint`, `typecheck` and the tests pass
 
 Tests sit beside the module they exercise.
