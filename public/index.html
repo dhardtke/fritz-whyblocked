@@ -4,34 +4,31 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>fritz-whyblocked</title>
+    <script>
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    </script>
     <style>
       :root {
-        color-scheme: light;
-        --bg: #f6f6f4;
-        --surface-1: #ffffff;
-        --border: #e2e2de;
-        --text-primary: #191919;
-        --text-secondary: #666666;
-        --series-1: #257de0;
-        --grid: #ececea;
-        --good: #008a17;
-        --critical: #d03a3b;
-        --warn-bg: #fff6e0;
+        color-scheme: light dark;
+        --bg: light-dark(#f6f6f4, #111111);
+        --surface-1: light-dark(#ffffff, #191919);
+        --border: light-dark(#e2e2de, #2e2e2e);
+        --text-primary: light-dark(#191919, #efefef);
+        --text-secondary: light-dark(#666666, #9c9c9c);
+        --series-1: light-dark(#257de0, #338ced);
+        --grid: light-dark(#ececea, #262626);
+        --good: light-dark(#008a17, #0aac23);
+        --critical: light-dark(#d03a3b, #eb6263);
+        --warn-bg: light-dark(#fff6e0, #2b2412);
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          color-scheme: dark;
-          --bg: #111111;
-          --surface-1: #191919;
-          --border: #2e2e2e;
-          --text-primary: #efefef;
-          --text-secondary: #9c9c9c;
-          --series-1: #338ced;
-          --grid: #262626;
-          --good: #0aac23;
-          --critical: #eb6263;
-          --warn-bg: #2b2412;
-        }
+      :root[data-theme='light'] {
+        color-scheme: light;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
       }
       * {
         box-sizing: border-box;
@@ -215,6 +212,11 @@
         outline: 2px solid var(--series-1);
         outline-offset: 2px;
       }
+      .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
       .filter-toggle {
         display: flex;
         align-items: center;
@@ -300,11 +302,14 @@
           <h1>fritz-whyblocked</h1>
           <p class="sub">Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.</p>
         </div>
-        <label class="filter-toggle" id="filterToggleWrap" hidden>
-          DNS filter
-          <span class="switch"><input type="checkbox" id="filterToggle" aria-label="Turn the box's DNS filter on or off" /><span></span></span>
-          <span id="filterToggleText"></span>
-        </label>
+        <div class="header-controls">
+          <label class="filter-toggle" id="filterToggleWrap" hidden>
+            DNS filter
+            <span class="switch"><input type="checkbox" id="filterToggle" aria-label="Turn the box's DNS filter on or off" /><span></span></span>
+            <span id="filterToggleText"></span>
+          </label>
+          <button type="button" id="themeToggle"></button>
+        </div>
       </header>
       <p id="boxError" class="error" hidden></p>
 
@@ -384,6 +389,32 @@
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         return data;
       }
+
+      // ---------- theme ----------
+      const themes = [
+        { name: 'system', label: '◐ System' },
+        { name: 'light', label: '☀ Light' },
+        { name: 'dark', label: '☾ Dark' },
+      ];
+      function showTheme() {
+        const current = document.documentElement.dataset.theme ?? 'system';
+        const theme = themes.find((t) => t.name === current) ?? themes[0];
+        $('themeToggle').textContent = theme.label;
+        $('themeToggle').title = `Color theme: ${theme.name} (click to change)`;
+      }
+      $('themeToggle').onclick = () => {
+        const current = themes.findIndex((t) => t.name === (document.documentElement.dataset.theme ?? 'system'));
+        const next = themes[(current + 1) % themes.length].name;
+        if (next === 'system') {
+          delete document.documentElement.dataset.theme;
+          localStorage.removeItem('theme');
+        } else {
+          document.documentElement.dataset.theme = next;
+          localStorage.setItem('theme', next);
+        }
+        showTheme();
+      };
+      showTheme();
 
       // ---------- changes: dry run first, then send ----------
       async function change(title, path, body, onDone) {
