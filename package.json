@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click.",
+  "license": "MIT",
   "type": "module",
   "module": "src/server.ts",
   "scripts": {

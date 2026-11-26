@@ -73,4 +73,7 @@ Pushes to `main` deploy through a self-hosted GitHub Actions runner to a Fedora 
 - Does an exception for a parent domain also allow its subdomains? Does the box interpret Adblock, hosts and domain entries the same way for subdomains? Until that is clear, the UI marks such hits as "interpretation unclear".
 - Whether `statistics.dnsQueryCount` counts continuously or per day; the history treats a falling counter as a reset.
 - Capture on demand (later; slows the box down to 60–100 Mbit/s while recording).
-- Choose a license.
+
+## License
+
+[MIT](LICENSE)
