@@ -94,6 +94,9 @@
         border-color: var(--series-1);
         color: #fff;
       }
+      button.danger {
+        color: var(--critical);
+      }
       button:disabled {
         opacity: 0.5;
         cursor: default;
@@ -288,6 +291,50 @@
         overflow: auto;
         font-size: 12px;
       }
+      table.editable input[type='text'],
+      table.editable select {
+        width: 100%;
+        font: inherit;
+        font-size: 14px;
+        padding: 4px 6px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: inherit;
+      }
+      table.editable td {
+        vertical-align: middle;
+      }
+      tr.changed > td:first-child,
+      tr.added > td:first-child {
+        box-shadow: inset 3px 0 var(--series-1);
+      }
+      tr.deleted > td:first-child {
+        box-shadow: inset 3px 0 var(--critical);
+      }
+      tr.deleted input[type='text'] {
+        text-decoration: line-through;
+      }
+      tr.deleted td:not(:last-child) {
+        opacity: 0.5;
+      }
+      .save-bar {
+        position: sticky;
+        bottom: 0;
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 0 16px 16px;
+      }
+      .save-bar[hidden] {
+        display: none;
+      }
+      .save-bar > .row {
+        background: var(--surface-1);
+        border: 1px solid var(--series-1);
+        border-radius: 10px;
+        padding: 10px 14px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      }
       details summary {
         cursor: pointer;
         color: var(--text-secondary);
@@ -350,7 +397,7 @@
             <option value="allow">Exception (allow)</option>
             <option value="deny">Custom block</option>
           </select>
-          <button type="submit">Add …</button>
+          <button type="submit">Add</button>
         </form>
       </section>
 
@@ -361,10 +408,20 @@
       </section>
     </main>
 
+    <div class="save-bar" id="saveBar" hidden>
+      <div class="row">
+        <span id="saveCount"></span>
+        <span class="muted">Nothing is sent to the box until you save.</span>
+        <span style="flex: 1"></span>
+        <button type="button" id="discardBtn">Discard</button>
+        <button type="button" class="primary" id="saveBtn">Save …</button>
+      </div>
+    </div>
+
     <dialog id="confirm">
       <h2 id="confirmTitle">Change on the box</h2>
       <p class="muted">
-        Dry run: this JSON is sent to the box via <code>PUT</code>. Afterwards the tool reads the state again and checks that the change arrived.
+        Dry run: these requests are sent to the box, one after the other. Afterwards the tool reads the state again and checks that the change arrived.
       </p>
       <pre id="confirmBody"></pre>
       <p id="confirmResult"></p>
@@ -424,7 +481,9 @@
         $('confirmSend').disabled = false;
         try {
           const plan = await api(path, { ...body, dryRun: true });
-          $('confirmBody').textContent = `${plan.planned.method} ${plan.planned.url}\n\n${JSON.stringify(plan.planned.body, null, 2)}`;
+          $('confirmBody').textContent = plan.planned
+            .map((r) => `${r.method} ${r.url}${r.body === undefined ? '' : `\n${JSON.stringify(r.body, null, 2)}`}`)
+            .join('\n\n');
         } catch (err) {
           $('confirmBody').textContent = '';
           $('confirmResult').innerHTML = `<span class="error">${esc(err.message)}</span>`;
@@ -448,8 +507,9 @@
         });
         dlg.close();
         if (result) {
-          await loadStatus();
           onDone?.();
+          await loadStatus();
+          renderAll();
         }
         return result;
       }
@@ -528,28 +588,134 @@
       // ---------- status, exceptions, lists ----------
       let status = null;
 
-      function renderDomains(domains) {
-        if (!domains.length) {
+      // ---------- draft: every change on the page is collected here until Save ----------
+      const emptyDraft = () => ({ enabled: undefined, lists: new Map(), entries: new Map(), added: [] });
+      let draft = emptyDraft();
+      let nextAddedId = 0;
+      // The table rows point into this array, so a refresh while editing must not swap it underneath them.
+      let shownDomains = [];
+      const keyOf = (d) => `${d.action}:${d.domain.toLowerCase()}`;
+
+      function entryRow(d) {
+        let row = draft.entries.get(keyOf(d));
+        if (!row) {
+          row = { domain: d.domain, action: d.action, enabled: d.enabled, comment: d.comment ?? '', deleted: false };
+          draft.entries.set(keyOf(d), row);
+        }
+        return row;
+      }
+
+      function entryChanged(d, row) {
+        return (
+          row.deleted || row.domain.trim() !== d.domain || row.action !== d.action || row.enabled !== d.enabled || row.comment.trim() !== (d.comment ?? '')
+        );
+      }
+
+      const changeOf = (row) => ({ domain: row.domain.trim(), action: row.action, enabled: row.enabled, comment: row.comment.trim() });
+
+      function buildEdits() {
+        const edits = {};
+        if (draft.enabled !== undefined) edits.enabled = draft.enabled;
+        const lists = [...draft.lists].map(([url, enabled]) => ({ url, enabled }));
+        if (lists.length) edits.lists = lists;
+        const domains = [];
+        for (const d of shownDomains) {
+          const row = draft.entries.get(keyOf(d));
+          if (!row || !entryChanged(d, row)) continue;
+          const target = { domain: d.domain, action: d.action };
+          domains.push(row.deleted ? { target } : { target, change: changeOf(row) });
+        }
+        for (const row of draft.added) domains.push({ change: changeOf(row) });
+        if (domains.length) edits.domains = domains;
+        return edits;
+      }
+
+      function changeCount() {
+        const edits = buildEdits();
+        return (edits.enabled === undefined ? 0 : 1) + (edits.lists?.length ?? 0) + (edits.domains?.length ?? 0);
+      }
+
+      function updateSaveBar() {
+        const n = changeCount();
+        $('saveBar').hidden = n === 0;
+        $('saveCount').textContent = `${n} unsaved ${n === 1 ? 'change' : 'changes'}`;
+      }
+
+      $('discardBtn').addEventListener('click', () => {
+        draft = emptyDraft();
+        renderAll();
+      });
+      $('saveBtn').addEventListener('click', async () => {
+        const n = changeCount();
+        // Once a write was sent, the box's state is the truth: the draft was built on the state before it.
+        await change(`Save ${n} ${n === 1 ? 'change' : 'changes'}`, '/api/filter', buildEdits(), () => {
+          draft = emptyDraft();
+        });
+      });
+      window.addEventListener('beforeunload', (e) => {
+        if (changeCount() > 0) e.preventDefault();
+      });
+
+      // ---------- rendering ----------
+      function entryCells(row, label) {
+        return `<td><label class="switch"><input type="checkbox" data-field="enabled" ${row.enabled ? 'checked' : ''} aria-label="Turn ${esc(label)} on or off"><span></span></label></td>
+    <td><input type="text" data-field="domain" value="${esc(row.domain)}" aria-label="Domain" autocomplete="off"></td>
+    <td><select data-field="action" aria-label="Type"><option value="allow" ${row.action === 'allow' ? 'selected' : ''}>Exception</option><option value="deny" ${row.action === 'deny' ? 'selected' : ''}>Custom block</option></select></td>
+    <td><input type="text" data-field="comment" value="${esc(row.comment)}" aria-label="Comment" autocomplete="off"></td>`;
+      }
+
+      function renderDomains() {
+        shownDomains = status?.domains ?? [];
+        if (!shownDomains.length && !draft.added.length) {
           $('domains').innerHTML = `<p class="muted">No entries.</p>`;
           return;
         }
-        $('domains').innerHTML = `<table><thead><tr><th>On</th><th>Domain</th><th>Type</th><th>Comment</th></tr></thead><tbody>${domains
-          .map(
-            (d, i) => `
-    <tr><td><label class="switch"><input type="checkbox" data-domain="${i}" ${d.enabled ? 'checked' : ''} aria-label="Turn ${esc(d.domain)} on or off"><span></span></label></td>
-    <td><code>${esc(d.domain)}</code></td><td>${d.action === 'allow' ? 'Exception' : '<span class="blocked">Custom block</span>'}</td><td class="muted">${esc(d.comment)}</td></tr>`,
-          )
-          .join('')}</tbody></table>`;
+        const existing = shownDomains.map((d, i) => {
+          const row = draft.entries.get(keyOf(d)) ?? { domain: d.domain, action: d.action, enabled: d.enabled, comment: d.comment ?? '', deleted: false };
+          const cls = row.deleted ? 'deleted' : entryChanged(d, row) ? 'changed' : '';
+          return `<tr class="${cls}" data-entry="${i}">${entryCells(row, d.domain)}
+    <td><button type="button" class="danger" data-remove>${row.deleted ? 'Undo' : 'Delete'}</button></td></tr>`;
+        });
+        const added = draft.added.map(
+          (row) => `<tr class="added" data-added="${row.id}">${entryCells(row, row.domain || 'new entry')}
+    <td><button type="button" class="danger" data-remove>Remove</button></td></tr>`,
+        );
+        $('domains').innerHTML =
+          `<table class="editable"><thead><tr><th>On</th><th>Domain</th><th>Type</th><th>Comment</th><th></th></tr></thead><tbody>${[...existing, ...added].join('')}</tbody></table>`;
         $('domains')
-          .querySelectorAll('input[data-domain]')
-          .forEach((el) =>
-            el.addEventListener('change', async () => {
-              const d = domains[Number(el.dataset.domain)];
-              el.checked = d.enabled; // only change the state after confirmation
-              await change(`Turn ${d.domain} ${d.enabled ? 'off' : 'on'}`, '/api/domains', { domain: d.domain, action: d.action, enabled: !d.enabled });
-            }),
-          );
+          .querySelectorAll('tr.deleted input, tr.deleted select')
+          .forEach((el) => (el.disabled = true));
       }
+
+      function rowFor(tr) {
+        if (tr.dataset.added !== undefined) return { row: draft.added.find((r) => r.id === Number(tr.dataset.added)) };
+        const d = shownDomains[Number(tr.dataset.entry)];
+        return { d, row: entryRow(d) };
+      }
+
+      function onDomainInput(e) {
+        const field = e.target.dataset.field;
+        const tr = e.target.closest('tr');
+        if (!field || !tr) return;
+        const { d, row } = rowFor(tr);
+        row[field] = field === 'enabled' ? e.target.checked : e.target.value;
+        if (d) tr.className = entryChanged(d, row) ? 'changed' : '';
+        updateSaveBar();
+      }
+      $('domains').addEventListener('input', onDomainInput);
+      $('domains').addEventListener('change', onDomainInput);
+      $('domains').addEventListener('click', (e) => {
+        const tr = e.target.closest('button[data-remove]')?.closest('tr');
+        if (!tr) return;
+        if (tr.dataset.added !== undefined) {
+          draft.added = draft.added.filter((r) => r.id !== Number(tr.dataset.added));
+        } else {
+          const row = rowFor(tr).row;
+          row.deleted = !row.deleted;
+        }
+        renderDomains();
+        updateSaveBar();
+      });
 
       function renderLists(lists) {
         if (!lists.length) {
@@ -558,23 +724,43 @@
         }
         $('lists').innerHTML =
           `<table><thead><tr><th>On</th><th>List</th><th>Type</th><th class="num">Entries (box)</th><th class="num">Rules in index</th><th>Loaded</th></tr></thead><tbody>${lists
-            .map(
-              (l, i) => `
-    <tr><td><label class="switch"><input type="checkbox" data-list="${i}" ${l.enabled ? 'checked' : ''} aria-label="Turn ${esc(l.name)} on or off"><span></span></label></td>
+            .map((l) => {
+              const enabled = draft.lists.get(l.url) ?? l.enabled;
+              return `
+    <tr class="${draft.lists.has(l.url) ? 'changed' : ''}"><td><label class="switch"><input type="checkbox" data-list-url="${esc(l.url)}" data-was="${l.enabled}" ${enabled ? 'checked' : ''} aria-label="Turn ${esc(l.name)} on or off"><span></span></label></td>
     <td><b>${esc(l.name)}</b><br><code class="muted">${esc(l.url)}</code></td><td>${l.action === 'allow' ? 'Allow' : 'Block'}</td>
     <td class="num">${l.boxEntryCount != null ? fmt.format(l.boxEntryCount) : '–'}</td><td class="num">${fmt.format(l.indexedRules)}</td>
-    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`,
-            )
+    <td>${l.error ? `<span class="error">${esc(l.error)}</span>` : l.loadedAt ? new Date(l.loadedAt).toLocaleString(undefined) : '<span class="muted">loading …</span>'}</td></tr>`;
+            })
             .join('')}</tbody></table>`;
-        $('lists')
-          .querySelectorAll('input[data-list]')
-          .forEach((el) =>
-            el.addEventListener('change', async () => {
-              const l = lists[Number(el.dataset.list)];
-              el.checked = l.enabled;
-              await change(`Turn list “${l.name}” ${l.enabled ? 'off' : 'on'}`, '/api/lists/toggle', { url: l.url, enabled: !l.enabled });
-            }),
-          );
+      }
+      $('lists').addEventListener('change', (e) => {
+        const url = e.target.dataset.listUrl;
+        if (url === undefined) return;
+        if (String(e.target.checked) === e.target.dataset.was) draft.lists.delete(url);
+        else draft.lists.set(url, e.target.checked);
+        e.target.closest('tr').className = draft.lists.has(url) ? 'changed' : '';
+        updateSaveBar();
+      });
+
+      function renderFilterToggle() {
+        $('filterToggleWrap').hidden = status?.filterEnabled == null;
+        const enabled = draft.enabled ?? Boolean(status?.filterEnabled);
+        $('filterToggle').checked = enabled;
+        $('filterToggleText').textContent = `${enabled ? 'on' : 'off'}${draft.enabled === undefined ? '' : ' (unsaved)'}`;
+      }
+      $('filterToggle').addEventListener('change', () => {
+        const want = $('filterToggle').checked;
+        draft.enabled = want === Boolean(status?.filterEnabled) ? undefined : want;
+        renderFilterToggle();
+        updateSaveBar();
+      });
+
+      function renderAll() {
+        renderFilterToggle();
+        renderDomains();
+        renderLists(status?.lists ?? []);
+        updateSaveBar();
       }
 
       function renderTiles(s) {
@@ -597,12 +783,13 @@
           status = await api('/api/status');
           $('boxError').hidden = !status.boxError;
           $('boxError').textContent = status.boxError ? `FRITZ!Box: ${status.boxError}` : '';
-          $('filterToggleWrap').hidden = status.filterEnabled === null;
-          $('filterToggle').checked = Boolean(status.filterEnabled);
-          $('filterToggleText').textContent = status.filterEnabled ? 'on' : 'off';
           renderTiles(status.statistics);
-          renderDomains(status.domains);
+          renderFilterToggle();
           renderLists(status.lists);
+          // Re-rendering the entries would drop the caret and the rows the draft points at.
+          const editing = changeCount() > 0 || $('domains').contains(document.activeElement);
+          if (!editing) renderDomains();
+          updateSaveBar();
           if (!status.listsReady) setTimeout(loadStatus, 5000);
         } catch (err) {
           $('boxError').hidden = false;
@@ -610,18 +797,12 @@
         }
       }
 
-      $('filterToggle').addEventListener('change', async () => {
-        const want = $('filterToggle').checked;
-        $('filterToggle').checked = !want;
-        await change(`Turn DNS filter ${want ? 'on' : 'off'}`, '/api/filter/toggle', { enabled: want });
-      });
-
-      $('addForm').addEventListener('submit', async (e) => {
+      $('addForm').addEventListener('submit', (e) => {
         e.preventDefault();
-        const domain = $('newDomain').value.trim();
-        const action = $('newAction').value;
-        const res = await change(`${action === 'allow' ? 'Exception' : 'Custom block'} for ${domain}`, '/api/domains', { domain, action, enabled: true });
-        if (res) $('newDomain').value = '';
+        draft.added.push({ id: nextAddedId++, domain: $('newDomain').value.trim(), action: $('newAction').value, enabled: true, comment: '' });
+        $('newDomain').value = '';
+        renderDomains();
+        updateSaveBar();
       });
 
       $('refreshLists').addEventListener('click', async () => {

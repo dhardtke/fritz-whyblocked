@@ -5,7 +5,17 @@ import { loadConfig } from './config.ts';
 import { query } from './dns.ts';
 import { INDEX_HTML } from './embedded.ts';
 import { errorMessage } from './errors.ts';
-import { domainApplied, FritzBox, setListEnabled, upsertDomain, type DnsFilter, type DomainChange, type FilterList, type PlannedRequest } from './fritz.ts';
+import {
+  editsMismatches,
+  FritzBox,
+  planEdits,
+  upsertEdits,
+  type DnsFilter,
+  type DomainChange,
+  type DomainEdit,
+  type EditPlan,
+  type FilterEdits,
+} from './fritz.ts';
 import { RuleSet } from './rules.ts';
 import { StatsStore, toIntervals } from './store.ts';
 
@@ -83,27 +93,48 @@ const boxServersPromise = boxDnsServers();
 
 // ---------- writing with dry run and verification ----------
 
-/** The box returns status fields that should not be sent back when writing. */
-function writableLists(lists: FilterList[]): FilterList[] {
-  return lists.map(({ status: _status, ...rest }) => rest as FilterList);
+interface PlannedRequest {
+  method: string;
+  url: string;
+  body?: unknown;
 }
 
 interface WriteResult {
   dryRun: boolean;
-  planned: PlannedRequest;
+  planned: PlannedRequest[];
   applied?: boolean;
   warning?: string;
 }
 
-async function writeOrPlan(body: Partial<DnsFilter>, dryRun: boolean, verify: (after: DnsFilter) => boolean): Promise<WriteResult> {
-  const planned = box.plan(body);
+/**
+ * Plans the edits against the box's current state and, unless this is a dry run, sends the requests one by one, then
+ * reads the state back and compares it with the plan. The box has no transactions: if a request fails, the ones before
+ * it have been applied, and the error says so.
+ */
+async function writeOrPlan(edits: FilterEdits, dryRun: boolean): Promise<WriteResult> {
+  const filter = await getFilter(0);
+  let plan: EditPlan;
+  try {
+    plan = planEdits(filter, edits);
+  } catch (err) {
+    throw new HttpError(409, errorMessage(err));
+  }
+  const planned = plan.requests.map((r) => ({ method: r.method, url: box.urlFor(r.path), ...(r.body !== undefined ? { body: r.body } : {}) }));
   if (dryRun) {
     return { dryRun: true, planned };
   }
-  await box.put(body);
-  const after = await getFilter(0);
-  const applied = verify(after);
-  return { dryRun: false, planned, applied, ...(applied ? {} : { warning: 'The box did not apply the change as expected.' }) };
+  for (const [i, request] of plan.requests.entries()) {
+    try {
+      await box.send(request);
+    } catch (err) {
+      await getFilter(0).catch(() => undefined);
+      const done = i === 0 ? 'None of the requests was applied.' : `The first ${i} of ${plan.requests.length} requests were applied.`;
+      throw new Error(`${errorMessage(err)} ${done}`, { cause: err });
+    }
+  }
+  const problems = editsMismatches(filter, plan.expected, await getFilter(0));
+  const applied = problems.length === 0;
+  return { dryRun: false, planned, applied, ...(applied ? {} : { warning: `The box did not apply the change as expected: ${problems.join('; ')}.` }) };
 }
 
 // ---------- HTTP ----------
@@ -168,6 +199,61 @@ function optionalStr(body: Body, key: string): string | undefined {
     throw new HttpError(400, `${key} must be a string.`);
   }
   return value;
+}
+
+function domainAction(body: Body, key: string): 'allow' | 'deny' {
+  const value = body[key];
+  if (value !== 'allow' && value !== 'deny') {
+    throw new HttpError(400, `${key} must be allow or deny.`);
+  }
+  return value;
+}
+
+function objects(body: Body, key: string): Body[] | undefined {
+  const value = body[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || !value.every(isBody)) {
+    throw new HttpError(400, `${key} must be a list of objects.`);
+  }
+  return value;
+}
+
+function optionalObject(body: Body, key: string): Body | undefined {
+  const value = body[key];
+  if (value !== undefined && !isBody(value)) {
+    throw new HttpError(400, `${key} must be an object.`);
+  }
+  return value;
+}
+
+function domainChange(body: Body): DomainChange {
+  return {
+    domain: str(body, 'domain').toLowerCase(),
+    action: domainAction(body, 'action'),
+    enabled: bool(body, 'enabled'),
+    comment: optionalStr(body, 'comment'),
+  };
+}
+
+function domainEdit(body: Body): DomainEdit {
+  const target = optionalObject(body, 'target');
+  const change = optionalObject(body, 'change');
+  if (!target && !change) {
+    throw new HttpError(400, 'A domain edit needs a target, a change or both.');
+  }
+  return {
+    ...(target ? { target: { domain: str(target, 'domain'), action: domainAction(target, 'action') } } : {}),
+    ...(change ? { change: domainChange(change) } : {}),
+  };
+}
+
+function filterEdits(body: Body): FilterEdits {
+  const enabled = body.enabled === undefined ? undefined : bool(body, 'enabled');
+  const lists = objects(body, 'lists')?.map((l) => ({ url: str(l, 'url'), enabled: bool(l, 'enabled') }));
+  const domains = objects(body, 'domains')?.map(domainEdit);
+  return { ...(enabled !== undefined ? { enabled } : {}), ...(lists ? { lists } : {}), ...(domains ? { domains } : {}) };
 }
 
 /** Writes are dry runs unless the body says otherwise. */
@@ -253,42 +339,19 @@ async function handle(req: Request): Promise<Response> {
 
   if (req.method === 'POST' && path === '/api/domains') {
     const body = await readBody(req);
-    const action = body.action;
-    if (action !== 'allow' && action !== 'deny') {
-      throw new HttpError(400, 'action must be allow or deny.');
-    }
     const change: DomainChange = {
       domain: str(body, 'domain').toLowerCase(),
-      action,
+      action: domainAction(body, 'action'),
       enabled: bool(body, 'enabled', true),
       comment: optionalStr(body, 'comment'),
     };
     const filter = await getFilter(0);
-    return json(await writeOrPlan({ domains: upsertDomain(filter.domains ?? [], change) }, dryRun(body), (after) => domainApplied(after.domains, change)));
+    return json(await writeOrPlan(upsertEdits(filter.domains ?? [], change), dryRun(body)));
   }
 
-  if (req.method === 'POST' && path === '/api/lists/toggle') {
+  if (req.method === 'POST' && path === '/api/filter') {
     const body = await readBody(req);
-    const listUrl = str(body, 'url');
-    const enabled = bool(body, 'enabled');
-    const filter = await getFilter(0);
-    let lists: FilterList[];
-    try {
-      lists = writableLists(setListEnabled(filter.filterlists ?? [], listUrl, enabled));
-    } catch (err) {
-      throw new HttpError(404, errorMessage(err));
-    }
-    return json(await writeOrPlan({ filterlists: lists }, dryRun(body), (after) => after.filterlists?.find((l) => l.url === listUrl)?.enabled === enabled));
-  }
-
-  if (req.method === 'POST' && path === '/api/filter/toggle') {
-    const body = await readBody(req);
-    const enabled = bool(body, 'enabled');
-    const filter = await getFilter(0);
-    if (typeof filter.enabled !== 'boolean') {
-      throw new HttpError(409, 'The box does not provide a switch for the whole DNS filter.');
-    }
-    return json(await writeOrPlan({ enabled }, dryRun(body), (after) => after.enabled === enabled));
+    return json(await writeOrPlan(filterEdits(body), dryRun(body)));
   }
 
   if (req.method === 'POST' && path === '/api/lists/refresh') {

@@ -14,11 +14,11 @@ and the tests catch most steps that are skipped, but not all of them.
 
 ## A write to the box
 
-1. Build the full new collection with a pure helper in `src/fritz.ts`, like `upsertDomain()`, and test it in
-   `src/fritz.test.ts` ("Box state and writes").
-2. Send it through `writeOrPlan()` with a `verify` function that checks the state read back, so the UI gets a dry run
-   first and a warning if the box ignores the change.
-3. Strip fields the box reports but does not accept, as `writableLists()` does.
+1. Plan the change in `planEdits()` in `src/fritz.ts` as requests against the box's own resources, and test the plan in
+   `src/fritz.test.ts` ("Box state and writes"). A `PUT` of the whole filter does not change entries or lists.
+2. Add what the box should report afterwards to the plan's `expected` state and compare it in `editsMismatches()`, so
+   the UI gets a dry run first and a warning naming what the box did not apply.
+3. Leave fields the box reports but does not accept out of the body, as `listBody()` does.
 
 ## A configuration variable
 

@@ -5,17 +5,17 @@ FRITZ!Box over its HTTP API and plain DNS, and keeps two things on disk. It has 
 
 ## Modules
 
-| Module              | Owns                                                                                         |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `src/server.ts`     | Entry point: configuration, routes, request validation, the box-state cache, the timers      |
-| `src/config.ts`     | Environment variables and systemd credentials, turned into a `Config`                        |
-| `src/analysis.ts`   | `analyze()`: CNAME chain, probes, trigger, responsible rules, notes                          |
-| `src/dns.ts`        | A minimal DNS client over UDP (A, AAAA, CNAME) and the block-address check                   |
-| `src/rules.ts`      | Parsing filter-list lines, the hashed `RuleIndex`, `RuleSet` (download, cache, lookup)       |
-| `src/fritz.ts`      | `FritzBox` (PBKDF2 login, SID renewal, `GET`/`PUT` of the DNS filter) and pure write helpers |
-| `src/store.ts`      | `StatsStore`, the statistics history in SQLite, and `toIntervals()`                          |
-| `src/embedded.ts`   | `public/index.html` as a string; the build replaces this module                              |
-| `public/index.html` | The whole UI: markup, CSS and one module script, no build step                               |
+| Module              | Owns                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/server.ts`     | Entry point: configuration, routes, request validation, the box-state cache, the timers           |
+| `src/config.ts`     | Environment variables and systemd credentials, turned into a `Config`                             |
+| `src/analysis.ts`   | `analyze()`: CNAME chain, probes, trigger, responsible rules, notes                               |
+| `src/dns.ts`        | A minimal DNS client over UDP (A, AAAA, CNAME) and the block-address check                        |
+| `src/rules.ts`      | Parsing filter-list lines, the hashed `RuleIndex`, `RuleSet` (download, cache, lookup)            |
+| `src/fritz.ts`      | `FritzBox` (PBKDF2 login, SID renewal, reads and writes of the DNS filter) and pure write helpers |
+| `src/store.ts`      | `StatsStore`, the statistics history in SQLite, and `toIntervals()`                               |
+| `src/embedded.ts`   | `public/index.html` as a string; the build replaces this module                                   |
+| `public/index.html` | The whole UI: markup, CSS and one module script, no build step                                    |
 
 Only `server.ts` has side effects on import. Everything else exports functions and classes that the tests exercise
 directly, which is why `analyze()` takes its DNS client and rule lookup as `AnalysisDeps` instead of importing them.
@@ -46,10 +46,27 @@ downloaded on start and every `LISTS_REFRESH_HOURS` into `DATA_DIR/lists/`; a fa
 The statistics are sampled every `STATS_INTERVAL` seconds and kept for 30 days.
 
 Every write to the box goes through `writeOrPlan()`. A request is a dry run unless its body says `"dryRun": false`: the
-dry run returns the planned `PUT`, which the UI shows for confirmation. The real write sends it, reads the filter again
-and reports whether the change arrived (`applied`, and a `warning` if not). The box's beta API takes the whole
-collection on `PUT`, so the pure helpers in `fritz.ts` (`upsertDomain()`, `setListEnabled()`) build the full new list
-from the current one, and `writableLists()` strips the read-only `status` fields.
+dry run returns the planned requests, which the UI shows for confirmation. The real write sends them one after the
+other, reads the filter again and reports whether the change arrived (`applied`, and a `warning` naming what differs if
+not).
+
+The box's beta API ignores `domains` and `filterlists` in a `PUT` of the whole filter: it answers `200 {}` and changes
+nothing. Entries and lists are written through their own resources instead, as tested against a real box: `POST
+/dnsfilter/domains` adds an entry (the box assigns its `UID`), `PUT /dnsfilter/domains/<UID>` replaces one, so a changed
+domain or action is kept, and `DELETE /dnsfilter/domains/<UID>` removes one. Comments are stored as sent. A filter list
+is switched with `PUT /dnsfilter/filterlists/<UID>` and the whole filter with a `PUT` of `{ "enabled" }` to the filter
+itself; both were tested too. The body of a `PUT` leaves out `UID` and the fields the box only reports (`status`,
+`latestUpdate`).
+
+The UI collects every change on the page (the filter switch, filter lists, and adding, editing and deleting entries) in
+a draft and sends it as one batch to `POST /api/filter` when you save. `planEdits()` turns the batch into requests
+against the state it reads fresh from the box, so a change made elsewhere in the meantime survives, and only what
+changes is sent. Deletes go first, then edits, then additions, so an entry can be replaced by a new one with the same
+domain and action. A batch that touches an entry that is gone, or leaves two entries with the same domain and action, is
+refused with `409`; uniqueness is checked on the result, so two entries can swap their domains. The box has no
+transactions: if a request fails, the ones before it stay applied, and the error says how many. `editsMismatches()`
+compares the state read back with the expected state from the plan. The one-click exception in a check result goes
+through `POST /api/domains`, which uses the same planning through `upsertEdits()`.
 
 ## HTTP API
 
@@ -61,9 +78,13 @@ from the current one, and `writableLists()` strips the read-only `status` fields
 | `GET /api/check?domain=`  |                                          | The analysis                                   |
 | `GET /api/stats?hours=`   |                                          | Statistics intervals, at most 30 days          |
 | `POST /api/domains`       | `domain`, `action`, `enabled`, `comment` | Add or switch an allow/deny entry              |
-| `POST /api/lists/toggle`  | `url`, `enabled`                         | Switch a filter list                           |
-| `POST /api/filter/toggle` | `enabled`                                | Switch the whole DNS filter                    |
+| `POST /api/filter`        | `enabled`, `lists`, `domains`            | Apply a batch of changes; see below            |
 | `POST /api/lists/refresh` |                                          | Download the lists again                       |
+
+A `POST /api/filter` body may hold any of: `enabled`, the switch for the whole filter; `lists`, a list of
+`{ url, enabled }`; and `domains`, a list of edits, each `{ target, change }`. `target` is `{ domain, action }` of an
+existing entry and `change` is `{ domain, action, enabled, comment }`: without `target` the edit adds an entry, without
+`change` it deletes one.
 
 Every write body also takes `dryRun`. `readBody()` checks that the body is a JSON object, and `str()`, `bool()` and
 `optionalStr()` check each field, answering `400` otherwise. An `HttpError` sets the status; any other error is

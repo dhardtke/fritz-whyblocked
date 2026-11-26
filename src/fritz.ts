@@ -10,6 +10,7 @@ export interface FilterList {
   /** e.g. "block" or "allow", as reported by the box */
   action?: string;
   status?: { entryCount?: number; [key: string]: unknown };
+  UID?: string;
   [key: string]: unknown;
 }
 
@@ -30,10 +31,15 @@ export interface DnsFilter {
   [key: string]: unknown;
 }
 
-export interface PlannedRequest {
-  method: 'PUT';
-  url: string;
-  body: Partial<DnsFilter>;
+/**
+ * One write to the box. `path` is relative to the DNS filter endpoint. The box ignores `domains` and `filterlists` in
+ * a PUT of the whole filter (it answers 200 and changes nothing), so entries and lists are written one by one through
+ * their own resources.
+ */
+export interface BoxRequest {
+  method: 'POST' | 'PUT' | 'DELETE';
+  path: string;
+  body?: unknown;
 }
 
 /** Every field of DnsFilter is optional, so any JSON object is one; the UI copes with missing fields. */
@@ -127,7 +133,7 @@ export class FritzBox {
   }
 
   /** Calls the box API; logs in again once if the SID has expired. */
-  async #api(method: 'GET' | 'PUT', url: string, body?: unknown): Promise<Response> {
+  async #api(method: 'GET' | BoxRequest['method'], url: string, body?: unknown): Promise<Response> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const sid = await this.#getSid(attempt > 0);
       const res = await fetch(url, {
@@ -158,13 +164,12 @@ export class FritzBox {
     return body;
   }
 
-  /** Builds the PUT request without sending it (dry run). */
-  plan(body: Partial<DnsFilter>): PlannedRequest {
-    return { method: 'PUT', url: this.dnsFilterUrl, body };
+  urlFor(path: string): string {
+    return `${this.dnsFilterUrl}${path}`;
   }
 
-  async put(body: Partial<DnsFilter>): Promise<void> {
-    await this.#api('PUT', this.dnsFilterUrl, body);
+  async send(request: BoxRequest): Promise<void> {
+    await this.#api(request.method, this.urlFor(request.path), request.body);
   }
 }
 
@@ -177,27 +182,193 @@ export interface DomainChange {
   comment?: string;
 }
 
+export interface DomainKey {
+  domain: string;
+  action: 'allow' | 'deny';
+}
+
+function sameKey(entry: DomainKey, key: DomainKey): boolean {
+  return entry.domain.toLowerCase() === key.domain.toLowerCase() && entry.action === key.action;
+}
+
+function keyLabel(key: DomainKey): string {
+  return `${key.domain} (${key.action})`;
+}
+
+/** Without `target` the entry is added; without `change` the target is deleted. */
+export interface DomainEdit {
+  target?: DomainKey;
+  change?: DomainChange;
+}
+
+export interface FilterEdits {
+  enabled?: boolean;
+  lists?: { url: string; enabled: boolean }[];
+  domains?: DomainEdit[];
+}
+
+/** The state the box should report once every request of a plan has arrived. */
+export interface ExpectedState {
+  enabled?: boolean;
+  lists?: FilterList[];
+  domains?: DomainEntry[];
+}
+
+export interface EditPlan {
+  requests: BoxRequest[];
+  expected: ExpectedState;
+}
+
+const DEFAULT_COMMENT = 'fritz-whyblocked';
+
+function uidPath(collection: string, item: { UID?: string }, label: string): string {
+  if (typeof item.UID !== 'string' || item.UID === '') {
+    throw new Error(`${label} has no UID, so the box cannot change it.`);
+  }
+  return `/${collection}/${encodeURIComponent(item.UID)}`;
+}
+
+/** The fields of an entry the box accepts; `UID` is in the path instead. */
+function entryBody({ UID: _uid, ...fields }: DomainEntry): Omit<DomainEntry, 'UID'> {
+  return fields;
+}
+
+/** The fields of a list the box accepts; `status` and `latestUpdate` are reported, not set. */
+function listBody({ UID: _uid, status: _status, latestUpdate: _latestUpdate, ...fields }: FilterList): Omit<FilterList, 'UID' | 'status'> {
+  return fields;
+}
+
+/** Adds an entry, or switches and comments the existing one with the same domain and action. */
+export function upsertEdits(domains: DomainEntry[], change: DomainChange): FilterEdits {
+  const existing = domains.find((d) => sameKey(d, change));
+  return { domains: [existing ? { target: existing, change } : { change }] };
+}
+
 /**
- * Adds an entry or updates an existing one with the same domain and action.
- * New entries get no UID; the box assigns it.
+ * Turns a batch of edits into the requests that apply it to the current state. Edited entries keep their UID, so the
+ * box changes them in place. Targets are matched against the current state, so the batch fails if an entry it touches
+ * is gone; uniqueness is checked on the result, so two entries can swap their domains. Deletes go first, so an entry
+ * can be replaced by a new one with the same domain and action.
  */
-export function upsertDomain(domains: DomainEntry[], change: DomainChange): DomainEntry[] {
-  const domain = change.domain.toLowerCase();
-  const idx = domains.findIndex((d) => d.domain.toLowerCase() === domain && d.action === change.action);
-  if (idx >= 0) {
-    return domains.map((d, i) => (i === idx ? { ...d, enabled: change.enabled, ...(change.comment !== undefined ? { comment: change.comment } : {}) } : d));
+export function planEdits(filter: DnsFilter, edits: FilterEdits): EditPlan {
+  const requests: BoxRequest[] = [];
+  const expected: ExpectedState = {};
+  if (edits.enabled !== undefined && edits.enabled !== filter.enabled) {
+    if (typeof filter.enabled !== 'boolean') {
+      throw new Error('The box does not provide a switch for the whole DNS filter.');
+    }
+    requests.push({ method: 'PUT', path: '', body: { enabled: edits.enabled } });
+    expected.enabled = edits.enabled;
   }
-  return [...domains, { enabled: change.enabled, comment: change.comment ?? 'fritz-whyblocked', action: change.action, domain }];
+  for (const c of edits.lists ?? []) {
+    const list = filter.filterlists?.find((l) => l.url === c.url);
+    if (!list) {
+      throw new Error(`Filter list ${c.url} not found.`);
+    }
+    if (list.enabled !== c.enabled) {
+      const changed = { ...list, enabled: c.enabled };
+      requests.push({ method: 'PUT', path: uidPath('filterlists', list, `List ${list.name}`), body: listBody(changed) });
+      (expected.lists ??= []).push(changed);
+    }
+  }
+  if (edits.domains !== undefined && edits.domains.length > 0) {
+    const domains = planDomainEdits(filter.domains ?? [], edits.domains);
+    if (domains.requests.length) {
+      requests.push(...domains.requests);
+      expected.domains = domains.result;
+    }
+  }
+  if (!requests.length) {
+    throw new Error('Nothing to change.');
+  }
+  return { requests, expected };
 }
 
-/** Checks after writing whether the box has applied the desired state. */
-export function domainApplied(domains: DomainEntry[] | undefined, change: DomainChange): boolean {
-  return (domains ?? []).some((d) => d.domain.toLowerCase() === change.domain.toLowerCase() && d.action === change.action && d.enabled === change.enabled);
+function planDomainEdits(domains: DomainEntry[], edits: DomainEdit[]): { requests: BoxRequest[]; result: DomainEntry[] } {
+  const byIndex = new Map<number, DomainChange | null>();
+  const added: DomainEntry[] = [];
+  for (const { target, change } of edits) {
+    if (!target) {
+      if (change) {
+        const comment = change.comment === undefined || change.comment === '' ? DEFAULT_COMMENT : change.comment;
+        added.push({ enabled: change.enabled, comment, action: change.action, domain: change.domain.toLowerCase() });
+      }
+      continue;
+    }
+    const idx = domains.findIndex((d) => sameKey(d, target));
+    if (idx < 0) {
+      throw new Error(`Entry ${keyLabel(target)} not found; it may have been changed elsewhere.`);
+    }
+    if (byIndex.has(idx)) {
+      throw new Error(`Entry ${keyLabel(target)} is edited twice.`);
+    }
+    byIndex.set(idx, change ?? null);
+  }
+
+  const deletes: BoxRequest[] = [];
+  const updates: BoxRequest[] = [];
+  const result: DomainEntry[] = [];
+  domains.forEach((d, i) => {
+    const change = byIndex.get(i);
+    if (change === undefined) {
+      result.push(d);
+      return;
+    }
+    const path = uidPath('domains', d, `Entry ${keyLabel(d)}`);
+    if (change === null) {
+      deletes.push({ method: 'DELETE', path });
+      return;
+    }
+    const updated: DomainEntry = {
+      ...d,
+      domain: change.domain.toLowerCase(),
+      action: change.action,
+      enabled: change.enabled,
+      ...(change.comment !== undefined ? { comment: change.comment } : {}),
+    };
+    result.push(updated);
+    if (updated.domain !== d.domain || updated.action !== d.action || updated.enabled !== d.enabled || updated.comment !== d.comment) {
+      updates.push({ method: 'PUT', path, body: entryBody(updated) });
+    }
+  });
+  result.push(...added);
+  result.forEach((d, i) => {
+    if (result.findIndex((o) => sameKey(o, d)) !== i) {
+      throw new Error(`There are two entries for ${keyLabel(d)}.`);
+    }
+  });
+  const adds = added.map((d): BoxRequest => ({ method: 'POST', path: '/domains', body: d }));
+  return { requests: [...deletes, ...updates, ...adds], result };
 }
 
-export function setListEnabled(lists: FilterList[], url: string, enabled: boolean): FilterList[] {
-  if (!lists.some((l) => l.url === url)) {
-    throw new Error(`Filter list ${url} not found.`);
+/** Compares the state read back after a write with the expected state and lists what does not match. */
+export function editsMismatches(before: DnsFilter, expected: ExpectedState, after: DnsFilter): string[] {
+  const problems: string[] = [];
+  if (expected.enabled !== undefined && after.enabled !== expected.enabled) {
+    problems.push(`the DNS filter is still ${after.enabled === true ? 'on' : 'off'}`);
   }
-  return lists.map((l) => (l.url === url ? { ...l, enabled } : l));
+  for (const want of expected.lists ?? []) {
+    if (after.filterlists?.find((l) => l.url === want.url)?.enabled !== want.enabled) {
+      problems.push(`list ${want.name} is not ${want.enabled ? 'on' : 'off'}`);
+    }
+  }
+  if (expected.domains) {
+    const now = after.domains ?? [];
+    for (const want of expected.domains) {
+      const entry = now.find((d) => sameKey(d, want));
+      if (!entry) {
+        problems.push(`${keyLabel(want)} is missing`);
+      } else if (entry.enabled !== want.enabled) {
+        problems.push(`${keyLabel(want)} is not ${want.enabled ? 'on' : 'off'}`);
+      } else if ((entry.comment ?? '') !== (want.comment ?? '')) {
+        problems.push(`${keyLabel(want)} does not have the comment "${want.comment ?? ''}"`);
+      }
+    }
+    for (const b of before.domains ?? []) {
+      if (!expected.domains.some((w) => sameKey(w, b)) && now.some((d) => sameKey(d, b))) {
+        problems.push(`${keyLabel(b)} is still there`);
+      }
+    }
+  }
+  return problems;
 }

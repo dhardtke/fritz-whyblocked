@@ -2,7 +2,7 @@
 
 _Find out why your FRITZ!Box DNS filter blocks a domain – and allow it with one click._
 
-Enter a domain or URL. fritz-whyblocked shows whether the FRITZ!Box DNS filter blocks it, which link of the CNAME chain triggers the block, and which filter list is responsible. You can add an exception with one click. It also has switches for exceptions, custom blocks and filter lists, and shows the box's statistics.
+Enter a domain or URL. fritz-whyblocked shows whether the FRITZ!Box DNS filter blocks it, which link of the CNAME chain triggers the block, and which filter list is responsible. You can add an exception with one click. You can also add, edit and delete exceptions and custom blocks, and switch the filter lists and the whole filter. These changes are collected on the page and saved together. It also shows the box's statistics.
 
 > Not an official product of FRITZ! GmbH; not affiliated with it.
 
@@ -15,7 +15,7 @@ Enter a domain or URL. fritz-whyblocked shows whether the FRITZ!Box DNS filter b
 
 The rule index stores a 44-bit hash plus the rule kind per rule in a sorted `Float64Array`, i.e. 8 bytes per rule. There is no packet capture and no DNS proxy, so the tool does not slow down the network.
 
-Changes to the box always follow the same steps. First a dry run shows the JSON for the `PUT`. Then it is sent, and the tool reads the state again to check that the change arrived.
+Changes to the box always follow the same steps. First a dry run shows the requests that will be sent. Then they are sent, and the tool reads the state again to check that the change arrived.
 
 ## Requirements
 
@@ -70,7 +70,6 @@ Pushes to `main` deploy through a self-hosted GitHub Actions runner to a Fedora 
 
 ## Open points
 
-- Test against the real box: does `PUT` accept a new `domains` entry without `UID`? Does it accept `filterlists` without `status`?
 - Does an exception for a parent domain also allow its subdomains? Does the box interpret Adblock, hosts and domain entries the same way for subdomains? Until that is clear, the UI marks such hits as "interpretation unclear".
 - Whether `statistics.dnsQueryCount` counts continuously or per day; the history treats a falling counter as a reset.
 - Capture on demand (later; slows the box down to 60–100 Mbit/s while recording).
