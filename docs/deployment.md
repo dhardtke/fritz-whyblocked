@@ -10,6 +10,29 @@ bun dist/fritz-whyblocked.js
 The build is one file: the server with `public/index.html` embedded and stamped with the commit it was built from.
 It needs only Bun, no `node_modules`. Configuration is the same as for `bun start` (see the README).
 
+## Container image
+
+Each deploying push to `main` also publishes `ghcr.io/dhardtke/fritz-whyblocked:<version>`, `:<sha>` and `:latest`.
+`<version>` is the UTC build date and the workflow's run number, such as `2026.11.28.42`: it only ever grows, so
+Renovate in the server repository can tell a newer image from an older one. It is separated by dots only, because
+Renovate treats anything after a `-` as a variant name and never updates across variants. The `image` job copies the
+`check` job's `fritz-whyblocked.js` onto `oven/bun:<version>-distroless` (`deploy/Dockerfile`), with the Bun version
+taken from the build's `bun-version`. Nothing is compiled again, and the image has no shell or package manager. It runs
+as uid 65532 and keeps its data in `/data` (`DATA_DIR`), so mount a directory that uid can write. On NixOS:
+
+```nix
+virtualisation.oci-containers.containers.fritz-whyblocked = {
+  image = "ghcr.io/dhardtke/fritz-whyblocked:<version>@sha256:<digest>";
+  volumes = [ "/var/lib/fritz-whyblocked:/data" ];     # chown 65532:65532
+  environmentFiles = [ "/run/secrets/fritz-whyblocked-env" ]; # FRITZ_PASSWORD, UI_PASSWORD, …, unquoted
+  extraOptions = [ "--network=host" ];
+};
+```
+
+Use host networking: podman's default network has no IPv6, so the probe of `BOX_DNS_V6` would fail. Podman passes an
+environment file through literally, so its values take no quotes, unlike `fritz-whyblocked.env` under systemd. A manual
+run on `main` (_Actions → CI → Run workflow_) always publishes the image, and deploys like a force push.
+
 The rest of this document covers the repository's own server.
 
 ## How a deploy works
